@@ -175,8 +175,8 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
                     break
 
             else:
-                # モックデータの生成 (ページネーションの挙動確認用)
-                await asyncio.sleep(0.5) # 通信待ち時間
+                # モックデータの生成
+                await asyncio.sleep(0.5) 
                 batch_data = generate_mock_batch(offset, limit, pref_code)
                 if batch_data is None: # 終了条件
                     break
