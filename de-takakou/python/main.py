@@ -107,7 +107,6 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
                     searchResults {
                       id
                       title
-                      # 必要なフィールドがあれば追加 (ただしスキーマ依存)
                     }
                   }
                 }
@@ -142,7 +141,7 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
                 response = await pyfetch(url, method="POST", headers=headers, body=json.dumps(body_data))
                 
                 if response.status != 200:
-                    err_text = await response.text()
+                    err_text = await response.string()
                     print(f"ERROR: API Error {response.status}")
                     print(f"ERROR: Details: {err_text}")
                     break
