@@ -61,27 +61,72 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
     print(f"INFO: データ取得・加工プロセスを開始します (Pref: {pref_code})")
     
     # APIエンドポイントのパス (Worker経由)
-    # 本来のパス: /api/v1/search
-    resource_path = "/api/v1/search"
+    # GraphQLのルートエンドポイント
+    resource_path = "/api/v1/"
     
     # モック判定（WorkerURLが設定されていない場合）
     is_mock = "your-worker-endpoint" in WORKER_ENDPOINT
 
     try:
         if not is_mock:
-            # デバッグ: APIキーの受信確認 (セキュリティのため長さのみ表示)
+            # デバッグ: APIキーの受信確認
             print(f"DEBUG: API Key received (len: {len(str(api_key)) if api_key else 0})")
 
+        # 都道府県コードから都道府県名への変換マップ
+        pref_map = {
+            "01": "北海道", "02": "青森県", "03": "岩手県", "04": "宮城県", "05": "秋田県",
+            "06": "山形県", "07": "福島県", "08": "茨城県", "09": "栃木県", "10": "群馬県",
+            "11": "埼玉県", "12": "千葉県", "13": "東京都", "14": "神奈川県", "15": "新潟県",
+            "16": "富山県", "17": "石川県", "18": "福井県", "19": "山梨県", "20": "長野県",
+            "21": "岐阜県", "22": "静岡県", "23": "愛知県", "24": "三重県", "25": "滋賀県",
+            "26": "京都府", "27": "大阪府", "28": "兵庫県", "29": "奈良県", "30": "和歌山県",
+            "31": "鳥取県", "32": "島根県", "33": "岡山県", "34": "広島県", "35": "山口県",
+            "36": "徳島県", "37": "香川県", "38": "愛媛県", "39": "高知県", "40": "福岡県",
+            "41": "佐賀県", "42": "長崎県", "43": "熊本県", "44": "大分県", "45": "宮崎県",
+            "46": "鹿児島県", "47": "沖縄県"
+        }
+        pref_name = pref_map.get(pref_code, "東京都") # デフォルト
+
         while True:
-            # ボディ構築 (JSON形式)
+            # GraphQLクエリの構築 (仕様書準拠)
+            # term: 検索キーワード (xROAD的なデータを狙うため"道路"などを指定)
+            query = """
+            query searchData($term: String!, $first: Int, $size: Int, $prefName: String!) {
+              search(
+                term: $term
+                phraseMatch: true
+                first: $first
+                size: $size
+                attributeFilter: {
+                  attributeName: "DPF:prefecture_name",
+                  is: $prefName
+                }
+              ) {
+                totalNumber
+                searchResults {
+                  id
+                  title
+                  # 必要なフィールドがあれば追加 (ただしスキーマ依存)
+                }
+              }
+            }
+            """
+            
+            # クエリ変数の設定
+            variables = {
+                "term": "橋梁", # とりあえずサンプル通り
+                "first": offset, # pageFirstに対応
+                "size": limit,   # pageSizeに対応
+                "prefName": pref_name
+            }
+
+            # JSONボディ
             body_data = {
-                "prefCode": pref_code,
-                "searchType": 1,
-                "limit": limit,
-                "offset": offset
+                "query": query,
+                "variables": variables
             }
             
-            # URL生成 (クエリパラメータを除去)
+            # URL生成
             base = WORKER_ENDPOINT.rstrip('/')
             path = resource_path.lstrip('/') if resource_path.startswith('/') else resource_path
             url = f"{base}/{path}"
@@ -91,9 +136,8 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
                     "apikey": api_key,
                     "Content-Type": "application/json"
                 }
-                print(f"DEBUG: Fetching URL: {url} (POST)")
-                print(f"DEBUG: Body: {json.dumps(body_data)}")
-                print(f"DEBUG: Requesting {offset} - {offset + limit}...")
+                print(f"DEBUG: Fetching URL: {url} (GraphQL)")
+                print(f"DEBUG: Query Variables: {json.dumps(variables)}")
                 
                 response = await pyfetch(url, method="POST", headers=headers, body=json.dumps(body_data))
                 
@@ -101,7 +145,49 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
                     print(f"ERROR: API Error {response.status}")
                     break
                 
-                batch_data = await response.json()
+                resp_json = await response.json()
+                
+                if "errors" in resp_json:
+                    print(f"ERROR: GraphQL Error: {json.dumps(resp_json['errors'])}")
+                    break
+                    
+                # データの抽出
+                search_res = resp_json.get("data", {}).get("search", {})
+                batch_data = search_res.get("searchResults", [])
+                
+                # 簡易的なデータの整形 (x,yがないのでスキップせずそのまま追加)
+                processed_batch = []
+                for item in batch_data:
+                    # 座標情報が含まれているか不明なため、そのまま追加
+                    # 将来的には詳細取得APIなどが必要になる可能性大
+                    processed_batch.append(item)
+                
+                count = len(processed_batch)
+                total_data.extend(processed_batch)
+                offset += count
+                
+                print(f"INFO: {len(total_data)}件 取得完了...")
+                
+                # 取得完了条件
+                total_num = search_res.get("totalNumber", 0)
+                if len(total_data) >= total_num or count < limit or len(total_data) >= 500:
+                    print("INFO: 取得条件を満たしました (完了)")
+                    break
+
+            else:
+                # モックデータの生成 (ページネーションの挙動確認用)
+                await asyncio.sleep(0.5) # 通信待ち時間
+                batch_data = generate_mock_batch(offset, limit, pref_code)
+                if batch_data is None: # 終了条件
+                    break
+                # モックの場合は以下略... (既存ロジックはスキップ)
+                count = len(batch_data)
+                total_data.extend(batch_data)
+                offset += count
+                break # モックは1回で終了させる
+
+        print(f"SUCCESS: 合計 {len(total_data)} 件のデータを準備しました。")
+        return total_data
             else:
                 # モックデータの生成 (ページネーションの挙動確認用)
                 await asyncio.sleep(0.5) # 通信待ち時間
