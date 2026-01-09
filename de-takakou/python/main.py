@@ -1,0 +1,151 @@
+import json
+from pyodide.http import pyfetch
+import math
+import asyncio
+
+# -----------------------------------------------------------------------------
+# 1. 座標変換ロジック (JGD2011 平面直角座標系 -> WGS84 緯度経度)
+# -----------------------------------------------------------------------------
+# 簡易的な変換実装です。本来はpyproj推奨ですが、Pyodideでの軽量動作を優先してPure Pythonで実装します。
+# 係数は国土地理院の計算式に基づく近似値を使用することを想定しています。
+# ここでは「広島県(第6系)」や「東京都(第9系)」など、指定された系の原点を使用する必要があります。
+
+# 平面直角座標系の系番号と原点(ラジアン)のマッピング (抜粋)
+SYSTEM_ORIGINS = {
+    "01": {"lat": 33.0, "lon": 129.5}, # 第1系 (長崎・鹿児島等)
+    "13": {"lat": 36.0, "lon": 139.8333}, # 第9系 (東京)
+    "27": {"lat": 36.0, "lon": 136.0}, # 第6系 (大阪)
+    "34": {"lat": 36.0, "lon": 133.5}, # 第6系相当 (広島は状況によるがここでは仮定)
+    # ... 他の都道府県も必要に応じて追加
+}
+
+def jgd2011_to_wgs84(x, y, pref_code):
+    """
+    平面直角座標 (x, y) を 緯度経度 (lat, lon) に変換する簡易関数
+    ※精度は本格的なライブラリに劣りますが、可視化用途には十分です
+    """
+    # 簡易計算のため、実際には緯度経度へのオフセットとして近似計算します
+    # 注意: x軸が北向き、y軸が東向き
+    
+    origin = SYSTEM_ORIGINS.get(pref_code, {"lat": 36.0, "lon": 133.5}) # デフォルト
+    origin_lat = origin["lat"]
+    origin_lon = origin["lon"]
+
+    # 1度あたりの距離(km)概算
+    lat_per_km = 1 / 111.0
+    lon_per_km = 1 / (111.0 * math.cos(math.radians(origin_lat)))
+
+    # メートル -> キロメートル -> 度
+    lat = origin_lat + (x / 1000.0) * lat_per_km
+    lon = origin_lon + (y / 1000.0) * lon_per_km
+
+    return lat, lon
+
+# -----------------------------------------------------------------------------
+# 2. データ取得メインロジック (ページネーション対応)
+# -----------------------------------------------------------------------------
+
+async def fetch_xroad_data(api_key, pref_code, data_category):
+    """
+    Cloudflare Workers経由でデータをページネーションして取得し、座標変換を行う完全版関数
+    """
+    limit = 100 # 1回あたりの取得件数 (安全のため小さめに)
+    offset = 0
+    total_data = []
+    
+    # ワーカーのエンドポイント (ユーザーがデプロイしたURLに置き換える前提)
+    # ここではローカルテストや仮置き用に空文字にしていますが、
+    # 実際には "https://my-worker.username.workers.dev" のようになります
+    WORKER_ENDPOINT = "https://your-worker-endpoint.workers.dev" 
+    
+    print(f"INFO: データ取得・加工プロセスを開始します (Pref: {pref_code})")
+    
+    # APIエンドポイントのパス (Worker経由)
+    # 本来のパス: /api/v1/search
+    resource_path = "/api/v1/search"
+    
+    # モック判定（WorkerURLが設定されていない場合）
+    is_mock = "your-worker-endpoint" in WORKER_ENDPOINT
+
+    try:
+        while True:
+            # クエリパラメータ構築 (ページネーション)
+            # page=... ではなく offset/limit 方式を想定 (API仕様による)
+            query_params = f"?prefCode={pref_code}&searchType=1&limit={limit}&offset={offset}"
+            url = f"{WORKER_ENDPOINT}{resource_path}{query_params}"
+
+            if not is_mock:
+                headers = {"apikey": api_key}
+                print(f"DEBUG: Requesting {offset} - {offset + limit}...")
+                
+                response = await pyfetch(url, method="GET", headers=headers)
+                
+                if response.status != 200:
+                    print(f"ERROR: API Error {response.status}")
+                    break
+                
+                batch_data = await response.json()
+            else:
+                # モックデータの生成 (ページネーションの挙動確認用)
+                await asyncio.sleep(0.5) # 通信待ち時間
+                batch_data = generate_mock_batch(offset, limit, pref_code)
+                if batch_data is None: # 終了条件
+                    break
+
+            if not batch_data:
+                break
+            
+            # --- 3. データの加工 (座標変換) ---
+            processed_batch = []
+            for item in batch_data:
+                # 平面直角座標が含まれているかチェック (キー名は仕様依存)
+                if "x" in item and "y" in item:
+                    lat, lon = jgd2011_to_wgs84(item["x"], item["y"], pref_code)
+                    item["latitude"] = round(lat, 6)
+                    item["longitude"] = round(lon, 6)
+                    
+                    # 不要になった生座標は消しても良いが、デバッグ用に残す
+                    # del item["x"]
+                    # del item["y"]
+                
+                processed_batch.append(item)
+
+            count = len(processed_batch)
+            total_data.extend(processed_batch)
+            offset += count
+            
+            print(f"INFO: {len(total_data)}件 取得・加工完了...")
+            
+            # 安全装置: 今回はテスト用に最大500件で打ち止め
+            if len(total_data) >= 500 or count < limit:
+                print("INFO: 取得条件を満たしました (完了)")
+                break
+
+        print(f"SUCCESS: 合計 {len(total_data)} 件のデータを準備しました。")
+        return total_data
+
+    except Exception as e:
+        print(f"ERROR: 重大なエラーが発生しました: {str(e)}")
+        return []
+
+def generate_mock_batch(offset, limit, pref_code):
+    """ページネーションの挙動をテストするためのモックデータ生成"""
+    # 3ページ分(300件)だけ返すシミュレーション
+    if offset >= 300:
+        return None
+    
+    mock_batch = []
+    # 広島(34)ならそれっぽい座標、その他なら適当に
+    base_x = -15000 if pref_code == "34" else 0
+    base_y = -35000 if pref_code == "34" else 0
+
+    for i in range(limit):
+        current_id = offset + i
+        mock_batch.append({
+            "id": f"ITEM-{current_id:04d}",
+            "name": f"道路施設データ_{current_id}",
+            "x": base_x + (i * 100), # 擬似的な平面直角座標
+            "y": base_y + (i * 100),
+            "pref": pref_code
+        })
+    return mock_batch

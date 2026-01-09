@@ -1,0 +1,531 @@
+﻿<!doctype html>
+<html lang="ja">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>情報表示システム</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;600;700&display=swap"
+    rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" crossorigin="anonymous" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <header class="brand">
+        <div class="brand-mark"></div>
+        <div style="flex: 1;">
+          <div class="brand-title">情報表示</div>
+          <div class="brand-sub">統計・交通量の重ね合わせ</div>
+        </div>
+        <div class="row gap">
+          <button class="btn ghost" id="share-btn" title="URLを共有"
+            style="padding: 6px 10px; font-size: 12px;">共有</button>
+          <div class="dropdown" id="nav-dropdown">
+            <button class="btn ghost dropdown-toggle" style="padding: 6px 10px; font-size: 12px;">
+              <span>メニュー</span>
+              <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg"
+                style="margin-left: 4px;">
+                <path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                  stroke-linejoin="round" />
+              </svg>
+            </button>
+            <ul class="dropdown-menu">
+              <li><a href="index.html">可視化</a></li>
+              <li><a href="graph/index.html" target="_blank" rel="noopener noreferrer">グラフ作成</a></li>
+              <li><a href="de-takakou/index.html" target="_blank" rel="noopener noreferrer">データ加工</a></li>
+            </ul>
+          </div>
+        </div>
+      </header>
+
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-tab="home" role="tab" aria-selected="true">ホーム</button>
+        <button class="tab" data-tab="viz" role="tab" aria-selected="false">可視化</button>
+        <button class="tab" data-tab="report" role="tab" aria-selected="false">レポート</button>
+        <button class="tab" data-tab="summary" role="tab" aria-selected="false">概要</button>
+      </nav>
+
+      <section class="panel active" id="panel-home" data-panel="home" role="tabpanel">
+        <div class="section">
+          <h2>住所検索</h2>
+          <label class="field">
+            <span>住所・地名</span>
+            <input id="address-input" type="text" placeholder="例: 広島市中区紙屋町" />
+          </label>
+          <ul id="address-results" class="suggestions"></ul>
+          <div class="row gap">
+            <button class="btn" id="address-move">候補へ移動</button>
+            <button class="btn ghost" id="address-clear">クリア</button>
+          </div>
+          <p class="hint">国土地理院の住所検索APIを利用します。</p>
+        </div>
+
+        <div class="section">
+          <h2>操作ガイド</h2>
+          <p class="muted">初めて利用する方向けに簡易ガイドを表示します。</p>
+          <button class="btn" id="open-guide">ガイドを開く</button>
+        </div>
+
+        <div class="section">
+          <h2>道路レイヤ</h2>
+          <div class="row gap">
+            <button class="btn" id="roads-load">道路レイヤ読み込み</button>
+            <button class="btn ghost" id="roads-toggle">表示切替</button>
+          </div>
+          <p class="hint">データは `data/roads/hirosima/roads.geojson` を読み込みます。</p>
+        </div>
+
+        <div class="section">
+          <h2>ステータス</h2>
+          <div class="status-grid">
+            <div class="status-card">
+              <span class="label">地図状態</span>
+              <span id="status-map">準備中</span>
+            </div>
+            <div class="status-card">
+              <span class="label">道路レイヤ</span>
+              <span id="status-roads">未読み込み</span>
+            </div>
+          </div>
+        </div>
+
+
+        <div class="section">
+          <h2>設定リセット</h2>
+          <p class="muted">すべての操作・設定を消去して初期状態に戻します。</p>
+          <button class="btn ghost" id="app-reset" style="color: #ef4444; border-color: #ef4444;">初期状態に戻す</button>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-viz" data-panel="viz" role="tabpanel">
+        <div class="section">
+          <h2>統計年度</h2>
+          <label class="field" style="flex-direction: row; gap: 12px;">
+            <label class="row gap" style="width: auto;">
+              <input type="radio" name="stats-year" value="2020" checked /> 2020年
+            </label>
+            <label class="row gap" style="width: auto;">
+              <input type="radio" name="stats-year" value="2015" /> 2015年
+            </label>
+            <label class="row gap" style="width: auto;">
+              <input type="radio" name="stats-year" value="2010" /> 2010年
+            </label>
+          </label>
+        </div>
+        <div class="section">
+          <h2>表示項目</h2>
+          <label class="field">
+            <span>表示項目1</span>
+            <select id="viz-select">
+              <option value="none">選択なし</option>
+              <option value="traffic">交通量</option>
+              <option value="population">人口</option>
+              <option value="labor">労働者数</option>
+              <option value="floor">床面積</option>
+              <option value="road_area_total">合計道路面積</option>
+              <option value="road_area_nat">国道面積</option>
+              <option value="road_area_pref">県道面積</option>
+              <option value="road_area_muni">市道面積</option>
+              <option value="road_area_other">その他面積</option>
+              <option value="ratio_0_14">年齢構成（0-15）</option>
+              <option value="ratio_15_64">年齢構成（15-65）</option>
+              <option value="ratio_65_over">年齢構成（65以上）</option>
+              <option value="score">必要度スコア</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>表示項目2（円サイズ）</span>
+            <select id="viz-select-secondary">
+              <option value="none">選択なし</option>
+              <option value="traffic">交通量</option>
+              <option value="population">人口</option>
+              <option value="labor">労働者数</option>
+              <option value="floor">床面積</option>
+              <option value="road_area_total">合計道路面積</option>
+              <option value="road_area_nat">国道面積</option>
+              <option value="road_area_pref">県道面積</option>
+              <option value="road_area_muni">市道面積</option>
+              <option value="road_area_other">その他面積</option>
+              <option value="ratio_0_14">年齢構成（0-15）</option>
+              <option value="ratio_15_64">年齢構成（15-65）</option>
+              <option value="ratio_65_over">年齢構成（65以上）</option>
+              <option value="score">必要度スコア</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="section">
+          <h2>色付け条件</h2>
+          <label class="field">
+            <span>条件モード</span>
+            <select id="viz-filter-mode">
+              <option value="none">絞り込みなし</option>
+              <option value="primary-only">項目1の条件結果のみ</option>
+              <option value="separate">項目1/2に個別条件</option>
+            </select>
+          </label>
+
+          <div class="condition-set is-hidden" id="filter-primary">
+            <div class="condition-title">条件（項目1用）</div>
+            <div class="condition-row">
+              <select id="filter-primary-type">
+                <option value="percent">割合（上位%）</option>
+                <option value="value">値</option>
+              </select>
+              <div class="range-input">
+                <input id="filter-primary-min" type="number" min="0" step="0.1" placeholder="例: 10" />
+                <span>〜</span>
+                <input id="filter-primary-max" type="number" min="0" step="0.1" placeholder="例: 30" />
+              </div>
+            </div>
+          </div>
+
+          <div class="condition-set is-hidden" id="filter-secondary">
+            <div class="condition-title">条件（項目2用）</div>
+            <div class="condition-row">
+              <select id="filter-secondary-type">
+                <option value="percent">割合（上位%）</option>
+                <option value="value">値</option>
+              </select>
+              <div class="range-input">
+                <input id="filter-secondary-min" type="number" min="0" step="0.1" placeholder="例: 10" />
+                <span>〜</span>
+                <input id="filter-secondary-max" type="number" min="0" step="0.1" placeholder="例: 30" />
+              </div>
+            </div>
+          </div>
+          <p class="hint">割合は上位%区間（例: 10〜30）、値はそのまま数値範囲として扱います。</p>
+        </div>
+
+        <div class="section">
+          <h2>表示調整</h2>
+          <label class="field">
+            <span>色の透明度</span>
+            <input id="viz-fill-opacity" type="range" min="0" max="1" step="0.05" value="0.45" />
+          </label>
+          <label class="field">
+            <span>色の変化間隔</span>
+            <input id="viz-color-interval" type="range" min="20" max="200" step="5" value="100" />
+          </label>
+          <label class="field">
+            <span>円の大きさ</span>
+            <input id="viz-circle-scale" type="range" min="0.5" max="5" step="0.1" value="1" />
+          </label>
+        </div>
+
+        <div class="section">
+          <h2>その他</h2>
+          <label class="field checkbox">
+            <input id="viz-fill-empty-black" type="checkbox" />
+            <span>色のついていないセルを黒塗り</span>
+          </label>
+        </div>
+
+      </section>
+
+
+      <section class="panel" id="panel-report" data-panel="report" role="tabpanel">
+        <div class="section">
+          <h2>データ分析</h2>
+          <label class="field">
+            <span>分析モード</span>
+            <select id="report-mode-select">
+              <option value="search">条件検索</option>
+              <option value="aggregation">範囲内集計</option>
+              <option value="facility">施設抽出</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>対象データ</span>
+            <select id="report-source">
+              <option value="grid">グリッド（セル）</option>
+              <option value="roads">道路区画</option>
+            </select>
+          </label>
+          <div class="field">
+            <span>範囲選択</span>
+            <div class="row gap">
+              <button class="btn" id="report-range-start" type="button">範囲選択</button>
+              <button class="btn ghost" id="report-range-clear" type="button">クリア</button>
+            </div>
+            <label class="field checkbox report-range-toggle">
+              <input id="report-range-visibility" type="checkbox" checked />
+              <span>選択セルの表示</span>
+            </label>
+            <p class="hint" id="report-range-status">範囲未選択</p>
+          </div>
+
+          <div id="report-mode-search">
+            <label class="field">
+              <span>条件</span>
+              <select id="report-order">
+                <option value="desc">上位</option>
+                <option value="asc">下位</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>指標</span>
+              <select id="report-metric-source">
+                <option value="primary">表示項目1（色）</option>
+                <option value="secondary">表示項目2（円サイズ）</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>表示件数（上位）</span>
+              <input id="report-limit" type="number" min="5" max="100" value="20" />
+            </label>
+            <div class="row gap">
+              <button class="btn" id="report-run">検索</button>
+              <button class="btn ghost" id="report-export">CSV出力</button>
+            </div>
+            <div class="table-wrap" style="margin-top: 12px;">
+              <table class="report-table" id="report-table">
+                <thead>
+                  <tr>
+                    <th>順位</th>
+                    <th>kye_code</th>
+                    <th>値</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr class="placeholder">
+                    <td colspan="4">上位表示を実行するとここに一覧が入ります。</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="section" style="margin-top: 16px;">
+              <h2>検索結果</h2>
+              <div class="status-grid">
+                <div class="status-card">
+                  <span class="label">対象件数</span>
+                  <span id="report-count">-</span>
+                </div>
+                <div class="status-card">
+                  <span class="label">平均値</span>
+                  <span id="report-avg">-</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="report-mode-aggregation" class="is-hidden">
+            <label class="field">
+              <span>集計対象</span>
+              <select id="report-agg-metric">
+                <option value="population">人口</option>
+                <option value="traffic">交通量</option>
+                <option value="labor">労働者数</option>
+                <option value="floor">床面積</option>
+                <option value="road_area_total">合計道路面積</option>
+                <option value="road_area_nat">国道面積</option>
+                <option value="road_area_pref">県道面積</option>
+                <option value="road_area_muni">市道面積</option>
+                <option value="road_area_other">その他面積</option>
+                <option value="ratio_0_14">年齢構成（0-15）</option>
+                <option value="ratio_15_64">年齢構成（15-65）</option>
+                <option value="ratio_65_over">年齢構成（65以上）</option>
+                <option value="score">必要度スコア</option>
+              </select>
+            </label>
+            <div class="field">
+              <span>対象年度</span>
+              <label class="field" style="flex-direction: row; gap: 12px; margin-bottom: 0;">
+                <label class="row gap" style="width: auto;">
+                  <input type="radio" name="agg-year" value="2020" checked /> 2020年
+                </label>
+                <label class="row gap" style="width: auto;">
+                  <input type="radio" name="agg-year" value="2015" /> 2015年
+                </label>
+                <label class="row gap" style="width: auto;">
+                  <input type="radio" name="agg-year" value="2010" /> 2010年
+                </label>
+              </label>
+            </div>
+
+            <div class="row gap" style="margin: 8px 0;">
+              <button class="btn" id="report-agg-run">集計実行</button>
+              <button class="btn ghost" id="report-agg-export">CSV出力</button>
+            </div>
+
+            <div class="status-grid" id="report-agg-result" style="margin-top: 12px;">
+              <div class="status-card">
+                <span class="label">範囲合計</span>
+                <span id="agg-sum">-</span>
+              </div>
+              <div class="status-card">
+                <span class="label">範囲平均</span>
+                <span id="agg-avg-range">-</span>
+              </div>
+              <div class="status-card">
+                <span class="label">全体平均</span>
+                <span id="agg-avg-total">-</span>
+              </div>
+              <div class="status-card">
+                <span class="label">対象件数</span>
+                <span id="agg-count">-</span>
+              </div>
+              <div class="status-card" id="card-agg-max" style="cursor: pointer;" title="クリックで該当セルへ移動">
+                <span class="label">最大値 ↗</span>
+                <span id="agg-max">-</span>
+              </div>
+              <div class="status-card" id="card-agg-min" style="cursor: pointer;" title="クリックで該当セルへ移動">
+                <span class="label">最小値 ↗</span>
+                <span id="agg-min">-</span>
+              </div>
+            </div>
+          </div>
+
+          <div id="report-mode-facility" class="is-hidden">
+            <div class="field">
+              <span>施設を検索・選択</span>
+              <input type="text" id="report-facility-search" placeholder="例: コンビニ, 病院..."
+                style="width: 100%; margin-bottom: 8px;">
+              <div id="report-facility-list" class="facility-list-container">
+                <div class="sidebar-text" style="padding: 8px; font-size: 13px; color: var(--muted);">データを読み込み中...</div>
+              </div>
+            </div>
+            <div class="field">
+              <span style="font-size: 12px; color: var(--muted);">選択数: <span id="report-facility-count">0</span>
+                件</span>
+            </div>
+            <p class="hint">地図上で範囲選択を行ってください。</p>
+            <button class="btn" id="report-facility-run-btn" style="width: 100%;">抽出実行</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-summary" data-panel="summary" role="tabpanel">
+        <div class="section">
+          <h2>概要</h2>
+          <label class="field">
+            <span>モード</span>
+            <div class="row gap">
+              <label class="row gap">
+                <input id="summary-mode-adjust" type="radio" name="summary-mode" value="adjust" checked />
+                <span>調整</span>
+              </label>
+              <label class="row gap">
+                <input id="summary-mode-fixed" type="radio" name="summary-mode" value="fixed" />
+                <span>概要作成</span>
+              </label>
+            </div>
+          </label>
+          <p class="muted">調整: 通常の地図移動 / 概要作成: 位置・縮尺を固定</p>
+          <div class="summary-meta is-hidden" id="summary-meta">
+            <label class="field">
+              <span>制作年月日</span>
+              <input id="summary-date" type="text" placeholder="例: 2025/01/15" />
+            </label>
+            <label class="field">
+              <span>製作者</span>
+              <input id="summary-author" type="text" placeholder="例: 山田 太郎" />
+            </label>
+            <div class="row gap">
+              <button class="btn ghost" id="summary-extra-add" type="button">追加</button>
+              <button class="btn" id="summary-extra-confirm" type="button">確定</button>
+            </div>
+            <div class="summary-extra-inputs is-hidden" id="summary-extra-inputs">
+              <label class="field">
+                <span>表示項目の追加（項目名）</span>
+                <input id="summary-extra-title" type="text" placeholder="例: 追加項目" />
+              </label>
+              <label class="field">
+                <span>表示項目の追加（内容）</span>
+                <input id="summary-extra-value" type="text" placeholder="例: 内容を入力" />
+              </label>
+            </div>
+            <div class="summary-extra-list" id="summary-extra-list"></div>
+            <label class="field checkbox">
+              <input id="summary-show-conditions" type="checkbox" />
+              <span>可視化条件を表示</span>
+            </label>
+            <div class="row gap" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+              <button class="btn" id="summary-export-pptx" style="width: 100%;">PPTX形式で出力</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <main class="map-wrap">
+      <div id="map"></div>
+      <div class="map-hint">地図: 国土地理院タイル / MapLibre GL JS</div>
+      <div class="summary-badge is-hidden no-screenshot" id="summary-badge">概要作成中</div>
+      <div class="summary-header is-hidden" id="summary-header">
+        <div class="summary-header-item">制作年月日: <span id="summary-date-text">-</span></div>
+        <div class="summary-header-item">製作者: <span id="summary-author-text">-</span></div>
+        <div class="summary-header-item summary-header-extra is-hidden" id="summary-extra-row">
+          <span id="summary-extra-text">-</span>
+        </div>
+      </div>
+      <aside class="map-side">
+        <div class="map-condition is-hidden" id="viz-condition-box">
+          <div class="map-condition-title">可視化条件</div>
+          <div class="map-condition-body" id="viz-condition-body"></div>
+        </div>
+        <div class="map-counts" id="viz-counts">
+          <div class="map-counts-title">色付け対象セル数</div>
+          <div class="map-counts-body">
+            <div class="map-counts-line">
+              <span class="map-counts-label">項目1</span>
+              <span id="viz-count-primary">-</span>
+            </div>
+            <div class="map-counts-line">
+              <span class="map-counts-label">項目2</span>
+              <span id="viz-count-secondary">-</span>
+            </div>
+          </div>
+        </div>
+        <div class="map-legend">
+          <div class="legend" id="viz-legend">
+            <div class="legend-title" id="legend-title">交通量</div>
+            <div class="legend-bar" id="legend-bar"></div>
+            <div class="legend-range">
+              <span>低</span>
+              <span>高</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <aside class="property-panel" id="property-panel" aria-hidden="true">
+        <header class="property-header">
+          <div>
+            <div class="property-title" id="property-title">セル情報</div>
+            <div class="property-sub" id="property-sub">セル未選択</div>
+          </div>
+          <button class="btn ghost" id="property-close">閉じる</button>
+        </header>
+        <div class="property-body" id="property-body">
+          <p class="muted">セルをクリックすると情報が表示されます。</p>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <div class="overlay hidden" id="guide-overlay" aria-hidden="true">
+    <div class="overlay-card">
+      <header>
+        <h3>操作ガイド</h3>
+        <button class="btn ghost" id="guide-close">閉じる</button>
+      </header>
+      <div id="guide-body" class="overlay-body">読み込み中...</div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+
+</html>
