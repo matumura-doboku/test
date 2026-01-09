@@ -73,21 +73,29 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
             print(f"DEBUG: API Key received (len: {len(str(api_key)) if api_key else 0})")
 
         while True:
-            # クエリパラメータ構築 (ページネーション)
-            # page=... ではなく offset/limit 方式を想定 (API仕様による)
-            query_params = f"?prefCode={pref_code}&searchType=1&limit={limit}&offset={offset}"
+            # ボディ構築 (JSON形式)
+            body_data = {
+                "prefCode": pref_code,
+                "searchType": 1,
+                "limit": limit,
+                "offset": offset
+            }
             
-            # URL生成: スラッシュの重複を防ぎつつ結合
+            # URL生成 (クエリパラメータを除去)
             base = WORKER_ENDPOINT.rstrip('/')
             path = resource_path.lstrip('/') if resource_path.startswith('/') else resource_path
-            url = f"{base}/{path}{query_params}"
+            url = f"{base}/{path}"
 
             if not is_mock:
-                headers = {"apikey": api_key}
-                print(f"DEBUG: Fetching URL: {url}")
+                headers = {
+                    "apikey": api_key,
+                    "Content-Type": "application/json"
+                }
+                print(f"DEBUG: Fetching URL: {url} (POST)")
+                print(f"DEBUG: Body: {json.dumps(body_data)}")
                 print(f"DEBUG: Requesting {offset} - {offset + limit}...")
                 
-                response = await pyfetch(url, method="GET", headers=headers)
+                response = await pyfetch(url, method="POST", headers=headers, body=json.dumps(body_data))
                 
                 if response.status != 200:
                     print(f"ERROR: API Error {response.status}")
