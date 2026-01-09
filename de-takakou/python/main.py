@@ -88,50 +88,50 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
         pref_name = pref_map.get(pref_code, "東京都") # デフォルト
 
         while True:
-            # GraphQLクエリの構築 (仕様書準拠)
-            # term: 検索キーワード (xROAD的なデータを狙うため"道路"などを指定)
-            query = """
-            query searchData($term: String!, $first: Int, $size: Int, $prefName: String!) {
-              search(
-                term: $term
-                phraseMatch: true
-                first: $first
-                size: $size
-                attributeFilter: {
-                  attributeName: "DPF:prefecture_name",
-                  is: $prefName
-                }
-              ) {
-                totalNumber
-                searchResults {
-                  id
-                  title
-                  # 必要なフィールドがあれば追加 (ただしスキーマ依存)
-                }
-              }
-            }
-            """
-            
-            # クエリ変数の設定
-            variables = {
-                "term": "橋梁", # とりあえずサンプル通り
-                "first": offset, # pageFirstに対応
-                "size": limit,   # pageSizeに対応
-                "prefName": pref_name
-            }
-
-            # JSONボディ
-            body_data = {
-                "query": query,
-                "variables": variables
-            }
-            
-            # URL生成
-            base = WORKER_ENDPOINT.rstrip('/')
-            path = resource_path.lstrip('/') if resource_path.startswith('/') else resource_path
-            url = f"{base}/{path}"
-
             if not is_mock:
+                # GraphQLクエリの構築 (仕様書準拠)
+                # term: 検索キーワード (xROAD的なデータを狙うため"道路"などを指定)
+                query = """
+                query searchData($term: String!, $first: Int, $size: Int, $prefName: String!) {
+                  search(
+                    term: $term
+                    phraseMatch: true
+                    first: $first
+                    size: $size
+                    attributeFilter: {
+                      attributeName: "DPF:prefecture_name",
+                      is: $prefName
+                    }
+                  ) {
+                    totalNumber
+                    searchResults {
+                      id
+                      title
+                      # 必要なフィールドがあれば追加 (ただしスキーマ依存)
+                    }
+                  }
+                }
+                """
+                
+                # クエリ変数の設定
+                variables = {
+                    "term": "橋梁", # とりあえずサンプル通り
+                    "first": offset, # pageFirstに対応
+                    "size": limit,   # pageSizeに対応
+                    "prefName": pref_name
+                }
+
+                # JSONボディ
+                body_data = {
+                    "query": query,
+                    "variables": variables
+                }
+                
+                # URL生成
+                base = WORKER_ENDPOINT.rstrip('/')
+                path = resource_path.lstrip('/') if resource_path.startswith('/') else resource_path
+                url = f"{base}/{path}"
+
                 headers = {
                     "apikey": api_key,
                     "Content-Type": "application/json"
@@ -180,49 +180,12 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
                 batch_data = generate_mock_batch(offset, limit, pref_code)
                 if batch_data is None: # 終了条件
                     break
-                # モックの場合は以下略... (既存ロジックはスキップ)
+                
                 count = len(batch_data)
                 total_data.extend(batch_data)
                 offset += count
-                break # モックは1回で終了させる
-
-        print(f"SUCCESS: 合計 {len(total_data)} 件のデータを準備しました。")
-        return total_data
-            else:
-                # モックデータの生成 (ページネーションの挙動確認用)
-                await asyncio.sleep(0.5) # 通信待ち時間
-                batch_data = generate_mock_batch(offset, limit, pref_code)
-                if batch_data is None: # 終了条件
-                    break
-
-            if not batch_data:
-                break
-            
-            # --- 3. データの加工 (座標変換) ---
-            processed_batch = []
-            for item in batch_data:
-                # 平面直角座標が含まれているかチェック (キー名は仕様依存)
-                if "x" in item and "y" in item:
-                    lat, lon = jgd2011_to_wgs84(item["x"], item["y"], pref_code)
-                    item["latitude"] = round(lat, 6)
-                    item["longitude"] = round(lon, 6)
-                    
-                    # 不要になった生座標は消しても良いが、デバッグ用に残す
-                    # del item["x"]
-                    # del item["y"]
-                
-                processed_batch.append(item)
-
-            count = len(processed_batch)
-            total_data.extend(processed_batch)
-            offset += count
-            
-            print(f"INFO: {len(total_data)}件 取得・加工完了...")
-            
-            # 安全装置: 今回はテスト用に最大500件で打ち止め
-            if len(total_data) >= 500 or count < limit:
-                print("INFO: 取得条件を満たしました (完了)")
-                break
+                # モックの場合は1回で終了させるならここでbreak
+                # break
 
         print(f"SUCCESS: 合計 {len(total_data)} 件のデータを準備しました。")
         return total_data
