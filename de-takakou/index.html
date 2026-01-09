@@ -102,7 +102,10 @@
                     </div>
                 </section>
 
-                <button id="run-btn" class="run-button">データを取得・加工する</button>
+                <div class="button-group">
+                    <button id="run-btn" class="run-button">データを取得・加工</button>
+                    <button id="csv-btn" class="run-button secondary" disabled>CSV出力</button>
+                </div>
             </aside>
 
             <section class="content-area">
@@ -142,6 +145,8 @@
         let pyodide;
         const logContent = document.getElementById('status-log');
         const runBtn = document.getElementById('run-btn');
+        const csvBtn = document.getElementById('csv-btn');
+        let currentData = null;
 
         // Pythonの出力をログエリアにリダイレクトする関数
         const appendLog = (msg, type = 'info') => {
@@ -218,6 +223,10 @@
                 if (data && data.length > 0) {
                     renderPreview(data);
                     document.getElementById('preview-info').textContent = `${data.length} 件のデータを表示中`;
+                    
+                    // データを保存してCSVボタンを有効化
+                    currentData = data;
+                    csvBtn.disabled = false;
                 } else {
                     appendLog('データが取得できなかったか、空でした。', 'error');
                 }
@@ -225,8 +234,38 @@
                 appendLog(`実行エラー: ${err.message}`, 'error');
             } finally {
                 runBtn.disabled = false;
-                runBtn.textContent = 'データを取得・加工する';
+                runBtn.textContent = 'データを取得・加工';
             }
+        });
+
+        // CSV出力ボタンのイベント
+        csvBtn.addEventListener('click', () => {
+            if (!currentData || currentData.length === 0) return;
+
+            // CSVデータの生成
+            const keys = Object.keys(currentData[0]);
+            const header = keys.join(',');
+            const rows = currentData.map(row => {
+                return keys.map(key => {
+                    const val = row[key] === null ? '' : row[key];
+                    // ダブルクォートをエスケープして囲む
+                    return `"${String(val).replace(/"/g, '""')}"`;
+                }).join(',');
+            });
+            const csvContent = [header, ...rows].join('\n');
+
+            // BOM付きUTF-8でBlobを作成 (Excelでの文字化け防止)
+            const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+            
+            // ダウンロードリンクの生成とクリック
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `data_export_${new Date().getTime()}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         });
 
         // プレビューテーブルの描画
