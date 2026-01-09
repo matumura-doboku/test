@@ -56,8 +56,8 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
     # ワーカーのエンドポイント (ユーザーがデプロイしたURLに置き換える前提)
     # ここではローカルテストや仮置き用に空文字にしていますが、
     # 実際には "https://my-worker.username.workers.dev" のようになります
-    WORKER_ENDPOINT = "https://mlit-user-proxy.gyorui-sawara.workers.dev" 
-    
+    WORKER_ENDPOINT = "https://mlit-user-proxy.gyorui-sawara.workers.dev"
+
     print(f"INFO: データ取得・加工プロセスを開始します (Pref: {pref_code})")
     
     # APIエンドポイントのパス (Worker経由)
@@ -68,14 +68,23 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
     is_mock = "your-worker-endpoint" in WORKER_ENDPOINT
 
     try:
+        if not is_mock:
+            # デバッグ: APIキーの受信確認 (セキュリティのため長さのみ表示)
+            print(f"DEBUG: API Key received (len: {len(str(api_key)) if api_key else 0})")
+
         while True:
             # クエリパラメータ構築 (ページネーション)
             # page=... ではなく offset/limit 方式を想定 (API仕様による)
             query_params = f"?prefCode={pref_code}&searchType=1&limit={limit}&offset={offset}"
-            url = f"{WORKER_ENDPOINT}{resource_path}{query_params}"
+            
+            # URL生成: スラッシュの重複を防ぎつつ結合
+            base = WORKER_ENDPOINT.rstrip('/')
+            path = resource_path.lstrip('/') if resource_path.startswith('/') else resource_path
+            url = f"{base}/{path}{query_params}"
 
             if not is_mock:
                 headers = {"apikey": api_key}
+                print(f"DEBUG: Fetching URL: {url}")
                 print(f"DEBUG: Requesting {offset} - {offset + limit}...")
                 
                 response = await pyfetch(url, method="GET", headers=headers)

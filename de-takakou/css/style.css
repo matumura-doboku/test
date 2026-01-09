@@ -132,6 +132,36 @@ input:focus {
     margin-top: auto;
 }
 
+.button-group {
+    margin-top: auto;
+    display: flex;
+    gap: 10px;
+}
+
+.button-group .run-button {
+    margin-top: 0;
+    flex: 2;
+}
+
+.run-button.secondary {
+    flex: 1;
+    background: transparent;
+    border: 1px solid var(--primary);
+    color: var(--primary);
+}
+
+.run-button.secondary:hover {
+    background: rgba(59, 130, 246, 0.1);
+}
+
+.run-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: var(--border);
+    color: var(--text-muted);
+    border-color: transparent;
+}
+
 .run-button:hover {
     background: var(--primary-hover);
 }
