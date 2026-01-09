@@ -61,8 +61,8 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
     print(f"INFO: データ取得・加工プロセスを開始します (Pref: {pref_code})")
     
     # APIエンドポイントのパス (Worker経由)
-    # 本来のパス: /api/v1/opendata/search (推測される正しいパス)
-    resource_path = "/api/v1/opendata/search"
+    # 本来のパス: /api/v1/search
+    resource_path = "/api/v1/search"
     
     # モック判定（WorkerURLが設定されていない場合）
     is_mock = "your-worker-endpoint" in WORKER_ENDPOINT
