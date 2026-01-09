@@ -89,41 +89,33 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
 
         while True:
             if not is_mock:
-                # GraphQLクエリの構築 (仕様書準拠)
-                # term: 検索キーワード (xROAD的なデータを狙うため"道路"などを指定)
-                query = """
-                query searchData($term: String!, $first: Int, $size: Int, $prefName: String!) {
+                # GraphQLクエリの構築 (変数を直接埋め込み)
+                # 参考コード準拠のスタイルに変更
+                query = f"""
+                query {{
                   search(
-                    term: $term
+                    term: "橋梁"
                     phraseMatch: true
-                    first: $first
-                    size: $size
-                    attributeFilter: {
+                    first: {offset}
+                    size: {limit}
+                    attributeFilter: {{
                       attributeName: "DPF:prefecture_name",
-                      is: $prefName
-                    }
-                  ) {
+                      is: "{pref_name}"
+                    }}
+                  ) {{
                     totalNumber
-                    searchResults {
+                    searchResults {{
                       id
                       title
-                    }
-                  }
-                }
+                    }}
+                  }}
+                }}
                 """
-                
-                # クエリ変数の設定
-                variables = {
-                    "term": "橋梁", # とりあえずサンプル通り
-                    "first": offset, # pageFirstに対応
-                    "size": limit,   # pageSizeに対応
-                    "prefName": pref_name
-                }
 
-                # JSONボディ
+                # JSONボディ (variablesは使わない)
                 body_data = {
                     "query": query,
-                    "variables": variables
+                    "variables": {}
                 }
                 
                 # URL生成
@@ -136,7 +128,7 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
                     "Content-Type": "application/json"
                 }
                 print(f"DEBUG: Fetching URL: {url} (GraphQL)")
-                print(f"DEBUG: Query Variables: {json.dumps(variables)}")
+                # print(f"DEBUG: Query: {query}") # 必要ならコメントアウト解除
                 
                 response = await pyfetch(url, method="POST", headers=headers, body=json.dumps(body_data))
                 
