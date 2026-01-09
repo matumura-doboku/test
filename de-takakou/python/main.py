@@ -56,7 +56,7 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
     # ワーカーのエンドポイント (ユーザーがデプロイしたURLに置き換える前提)
     # ここではローカルテストや仮置き用に空文字にしていますが、
     # 実際には "https://my-worker.username.workers.dev" のようになります
-    WORKER_ENDPOINT = "https://your-worker-endpoint.workers.dev" 
+    WORKER_ENDPOINT = "https://mlit-user-proxy.gyorui-sawara.workers.dev" 
     
     print(f"INFO: データ取得・加工プロセスを開始します (Pref: {pref_code})")
     
