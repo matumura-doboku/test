@@ -1,38 +1,35 @@
 export default {
-    async fetch(request, env) {
-        // 1. CORSヘッダーの準備
+    async fetch(request, env, ctx) {
+        // 1. CORSヘッダー
         const corsHeaders = {
-            "Access-Control-Allow-Origin": "*", // 特定のドメインに絞るのがベストですが、開発用なら * でOK
-            "Access-Control-Allow-Methods": "GET, HEAD, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, apikey", // apikeyヘッダーを許可
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, apikey",
         };
 
-        // 2. OPTIONSリクエスト（プリフライト）への対応
+        // 2. OPTIONS対応
         if (request.method === "OPTIONS") {
-            return new Response(null, {
-                headers: corsHeaders,
-            });
+            return new Response(null, { headers: corsHeaders });
         }
 
         const url = new URL(request.url);
 
-        // 3. ターゲットAPIの構築 (パスパラメータ等から転送先を決定)
-        // エンドポイント例: https://your-worker.workers.dev/api/v1/search?prefCode=34
-        // ここでは国交省データプラットフォームをターゲットとする
-        const targetBase = "https://www.mlit-data.go.jp";
-        const targetUrl = targetBase + url.pathname + url.search;
+        // 3. ターゲットAPIの設定
+        // 仕様書等のサンプルに基づき .go 無しのドメインを指定
+        const targetHost = "https://www.mlit-data.jp";
+        const targetUrl = targetHost + url.pathname + url.search;
 
         try {
             // 4. リクエストの転送
-            // 元のリクエストのヘッダーを複製（APIキーなどを含む）
             const newRequest = new Request(targetUrl, {
                 method: request.method,
                 headers: request.headers,
+                body: request.body // POST等のbodyも転送
             });
 
             const response = await fetch(newRequest);
 
-            // 5. レスポンスの返却（CORSヘッダーを付与して返す）
+            // 5. レスポンスの返却
             const newResponse = new Response(response.body, response);
             Object.keys(corsHeaders).forEach((key) => {
                 newResponse.headers.set(key, corsHeaders[key]);
