@@ -142,7 +142,9 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
                 response = await pyfetch(url, method="POST", headers=headers, body=json.dumps(body_data))
                 
                 if response.status != 200:
+                    err_text = await response.text()
                     print(f"ERROR: API Error {response.status}")
+                    print(f"ERROR: Details: {err_text}")
                     break
                 
                 resp_json = await response.json()
