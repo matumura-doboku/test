@@ -109,6 +109,7 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
                       title
                       lat
                       lon
+                      metadata
                     }}
                   }}
                 }}
@@ -150,9 +151,18 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
                 search_res = resp_json.get("data", {}).get("search", {})
                 batch_data = search_res.get("searchResults", [])
                 
-                # データをそのままリストに追加
+                # データをそのままリストに追加 (metadataがあれば展開)
                 processed_batch = []
                 for item in batch_data:
+                    # metadataフィールドがあれば、その中身をフラットに展開してitemにマージ
+                    if "metadata" in item and isinstance(item["metadata"], dict):
+                        for k, v in item["metadata"].items():
+                            # 既存のキー(id, title等)と被らないようにプレフィックスをつけるか、そのまま上書きするか
+                            # ここでは "meta_" というプレフィックスをつける
+                            item[f"meta_{k}"] = v
+                        # 元のmetadataは消しても良いが、デバッグ用に残す
+                        # del item["metadata"]
+                    
                     processed_batch.append(item)
                 
                 count = len(processed_batch)
