@@ -156,10 +156,20 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
                 for item in batch_data:
                     # metadataフィールドがあれば、その中身をフラットに展開してitemにマージ
                     if "metadata" in item and isinstance(item["metadata"], dict):
-                        for k, v in item["metadata"].items():
-                            # 既存のキー(id, title等)と被らないようにプレフィックスをつけるか、そのまま上書きするか
-                            # ここでは "meta_" というプレフィックスをつける
-                            item[f"meta_{k}"] = v
+                        # 平坦化関数 (再帰的)
+                        def flatten_dict(d, parent_key='', sep='_'):
+                            items = []
+                            for k, v in d.items():
+                                new_key = f"{parent_key}{sep}{k}" if parent_key else k
+                                if isinstance(v, dict):
+                                    items.extend(flatten_dict(v, new_key, sep=sep).items())
+                                else:
+                                    items.append((new_key, v))
+                            return dict(items)
+
+                        flat_meta = flatten_dict(item["metadata"], parent_key="meta")
+                        item.update(flat_meta)
+                        
                         # 元のmetadataは消しても良いが、デバッグ用に残す
                         # del item["metadata"]
                     
