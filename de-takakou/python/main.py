@@ -107,6 +107,8 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
                     searchResults {{
                       id
                       title
+                      lat
+                      lon
                     }}
                   }}
                 }}
@@ -148,11 +150,9 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
                 search_res = resp_json.get("data", {}).get("search", {})
                 batch_data = search_res.get("searchResults", [])
                 
-                # 簡易的なデータの整形 (x,yがないのでスキップせずそのまま追加)
+                # データをそのままリストに追加
                 processed_batch = []
                 for item in batch_data:
-                    # 座標情報が含まれているか不明なため、そのまま追加
-                    # 将来的には詳細取得APIなどが必要になる可能性大
                     processed_batch.append(item)
                 
                 count = len(processed_batch)
@@ -177,8 +177,6 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
                 count = len(batch_data)
                 total_data.extend(batch_data)
                 offset += count
-                # モックの場合は1回で終了させるならここでbreak
-                # break
 
         print(f"SUCCESS: 合計 {len(total_data)} 件のデータを準備しました。")
         return total_data
@@ -208,3 +206,4 @@ def generate_mock_batch(offset, limit, pref_code):
             "pref": pref_code
         })
     return mock_batch
+    
