@@ -4,6 +4,7 @@ import {
     panels,
     vizSelect,
     vizSecondarySelect,
+    vizModeSelect,
     vizFilterMode,
     filterPrimaryType,
     filterPrimaryMin,
@@ -33,6 +34,7 @@ const STATE_MAP = {
     z: 'z',
     vizP: 'vp',
     vizS: 'vs',
+    vizM: 'vm',
     fm: 'fm',
     fpT: 'fpt',
     fpMin: 'fpmin',
@@ -81,6 +83,7 @@ function getCurrentState() {
         z: zoom.toFixed(2),
         vizP: vizSelect?.value,
         vizS: vizSecondarySelect?.value,
+        vizM: vizModeSelect?.value,
         fm: vizFilterMode?.value,
         fpT: filterPrimaryType?.value,
         fpMin: filterPrimaryMin?.value,
@@ -147,6 +150,11 @@ export function loadState() {
     // 2. 可視化設定の適用
     if (vizSelect) vizSelect.value = getVal('vizP') || vizSelect.value;
     if (vizSecondarySelect) vizSecondarySelect.value = getVal('vizS') || vizSecondarySelect.value;
+    if (vizModeSelect) {
+        vizModeSelect.value = getVal('vizM') || (vizModeSelect.options.length > 0 ? vizModeSelect.options[0].value : '');
+        // モード変更イベントを手動発火
+        vizModeSelect.dispatchEvent(new Event('change'));
+    }
     if (vizFilterMode) vizFilterMode.value = getVal('fm') || vizFilterMode.value;
     if (filterPrimaryType) filterPrimaryType.value = getVal('fpT') || filterPrimaryType.value;
     if (filterPrimaryMin) filterPrimaryMin.value = getVal('fpMin') || '';
@@ -256,7 +264,7 @@ export function loadState() {
 export function initAutoSave() {
     // UI要素の変更監視
     const inputs = [
-        vizSelect, vizSecondarySelect, vizFilterMode,
+        vizSelect, vizSecondarySelect, vizModeSelect, vizFilterMode,
         filterPrimaryType, filterPrimaryMin, filterPrimaryMax,
         filterSecondaryType, filterSecondaryMin, filterSecondaryMax,
         vizFillOpacityInput, vizColorIntervalInput, vizCircleScaleInput,
@@ -339,7 +347,7 @@ export function resetState() {
     // LocalStorageの消去
     localStorage.removeItem(STORAGE_KEY);
 
-    // URLパラメータを消してリロード
+    // リロード
     window.location.href = window.location.pathname;
 }
 

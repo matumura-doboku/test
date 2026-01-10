@@ -89,3 +89,15 @@ export const reportFacilitySearch = document.getElementById('report-facility-sea
 export const reportFacilityList = document.getElementById('report-facility-list');
 export const reportFacilityCount = document.getElementById('report-facility-count');
 export const reportFacilityRunBtn = document.getElementById('report-facility-run-btn');
+
+export const vizModeSelect = document.getElementById('viz-mode-select');
+export const vizSettingsGrid = document.getElementById('viz-settings-grid');
+export const vizSettingsPin = document.getElementById('viz-settings-pin');
+export const pinDataCount = document.getElementById('pin-data-count');
+export const pinDataDate = document.getElementById('pin-data-date');
+export const pinDataStatus = document.getElementById('pin-data-status');
+export const pinLoadBtn = document.getElementById('pin-load-data');
+export const pinFilterAlert = document.getElementById('pin-filter-alert');
+export const pinFieldSelect = document.getElementById('pin-field-select');
+export const pinFieldAdd = document.getElementById('pin-field-add');
+export const pinFieldList = document.getElementById('pin-field-list');

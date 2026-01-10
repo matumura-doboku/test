@@ -22,6 +22,9 @@ import {
   vizCountPrimary,
   vizCountSecondary,
   vizYearRadios,
+  vizModeSelect, // 追加
+  vizSettingsGrid,
+  vizSettingsPin
 } from './dom.js';
 import { state, vizThemes } from './state.js';
 
@@ -320,6 +323,9 @@ export function updateConditionSummary() {
 
 export function applyGridVisualization() {
   if (!state.map || !state.mapReady || !state.map.getLayer('grid-fill')) return;
+  // ピンモードの場合はグリッド更新をスキップ（レイヤ非表示が上書きされるのを防ぐ）
+  if (vizModeSelect && vizModeSelect.value === 'pin') return;
+
   const mode = vizSelect.value;
   const secondaryMode = vizSecondarySelect ? vizSecondarySelect.value : mode;
   const fillOpacity = toNumber(vizFillOpacityInput?.value, 0.45);
@@ -494,6 +500,13 @@ export function initVisualization() {
     summaryShowConditions.addEventListener('change', updateConditionSummary);
   }
 
+  // モード切替の初期化
+  if (vizModeSelect) {
+    vizModeSelect.addEventListener('change', updateVisualizationMode);
+    // 初期状態の適用（少し遅延させて地図ロードを待つなどが必要かもしれないが、ここでは即時実行）
+    updateVisualizationMode();
+  }
+
   updateLegend();
   vizSelect.addEventListener('change', updateLegend);
 
@@ -506,5 +519,42 @@ export function initVisualization() {
         }
       });
     });
+  }
+}
+
+// レイヤー定義
+const GRID_LAYERS = ['grid-fill', 'grid-line', 'grid-circles', 'grid-top'];
+const PIN_LAYERS = ['imported-pins-circle'];
+
+// モード切替関数
+export function updateVisualizationMode() {
+  if (!vizModeSelect) return;
+  const mode = vizModeSelect.value; // 'grid' or 'pin'
+  const isGrid = mode === 'grid';
+
+  // 1. パネル表示切替
+  if (vizSettingsGrid) vizSettingsGrid.classList.toggle('is-hidden', !isGrid);
+  if (vizSettingsPin) vizSettingsPin.classList.toggle('is-hidden', isGrid);
+
+  // 2. 地図レイヤーの表示切替
+  if (!state.map || !state.mapReady) return;
+
+  // グリッドレイヤーの制御
+  GRID_LAYERS.forEach(id => {
+    if (state.map.getLayer(id)) {
+      state.map.setLayoutProperty(id, 'visibility', isGrid ? 'visible' : 'none');
+    }
+  });
+
+  // ピンレイヤーの制御
+  PIN_LAYERS.forEach(id => {
+    if (state.map.getLayer(id)) {
+      state.map.setLayoutProperty(id, 'visibility', isGrid ? 'none' : 'visible');
+    }
+  });
+
+  // グリッドモードなら再描画（色付けの適用など）
+  if (isGrid) {
+    applyGridVisualization();
   }
 }

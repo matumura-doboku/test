@@ -1,12 +1,13 @@
 import { initTabs } from './ui-tabs.js';
 import { initMap, loadRoads, toggleRoads } from './map.js';
 import { initAddressSearch } from './ui-address.js';
-import { initVisualization, applyGridVisualization } from './ui-visualization.js';
+import { initVisualization, applyGridVisualization, updateVisualizationMode } from './ui-visualization.js';
 import { initReport } from './ui-report.js';
 import { initSummary } from './ui-summary.js';
 import { initGuide } from './ui-guide.js';
 import { initPropertyPanel } from './ui-property.js';
 import { initDropdowns } from './ui-dropdown.js';
+import { initPinVisualization } from './ui-pins.js'; // 追加
 import { roadsLoadBtn, roadsToggleBtn } from './dom.js';
 import { loadState, initAutoSave, bindMapEvents, initShareButton, resetState } from './state-sync.js';
 import { state } from './state.js';
@@ -20,6 +21,7 @@ initSummary();
 initGuide();
 initPropertyPanel();
 initDropdowns();
+initPinVisualization(); // 追加
 
 // 保存された状態の復元（地理的位置を含む）
 const initialView = loadState();
@@ -51,5 +53,6 @@ window.addEventListener('load', () => {
     // データ読み込み後の表示更新を確実にするため少し遅延させて適用
     setTimeout(() => {
         applyGridVisualization();
+        updateVisualizationMode();
     }, 1000);
 });

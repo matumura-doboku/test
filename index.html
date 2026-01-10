@@ -105,59 +105,138 @@
 
       <section class="panel" id="panel-viz" data-panel="viz" role="tabpanel">
         <div class="section">
-          <h2>統計年度</h2>
-          <label class="field" style="flex-direction: row; gap: 12px;">
-            <label class="row gap" style="width: auto;">
-              <input type="radio" name="stats-year" value="2020" checked /> 2020年
-            </label>
-            <label class="row gap" style="width: auto;">
-              <input type="radio" name="stats-year" value="2015" /> 2015年
-            </label>
-            <label class="row gap" style="width: auto;">
-              <input type="radio" name="stats-year" value="2010" /> 2010年
-            </label>
+          <h2>表示モード</h2>
+          <label class="field">
+            <select id="viz-mode-select">
+              <option value="grid">グリッドに色つけ</option>
+              <option value="pin">ピンの表示設定</option>
+            </select>
           </label>
         </div>
-        <div class="section">
-          <h2>表示項目</h2>
-          <label class="field">
-            <span>表示項目1</span>
-            <select id="viz-select">
-              <option value="none">選択なし</option>
-              <option value="traffic">交通量</option>
-              <option value="population">人口</option>
-              <option value="labor">労働者数</option>
-              <option value="floor">床面積</option>
-              <option value="road_area_total">合計道路面積</option>
-              <option value="road_area_nat">国道面積</option>
-              <option value="road_area_pref">県道面積</option>
-              <option value="road_area_muni">市道面積</option>
-              <option value="road_area_other">その他面積</option>
-              <option value="ratio_0_14">年齢構成（0-15）</option>
-              <option value="ratio_15_64">年齢構成（15-65）</option>
-              <option value="ratio_65_over">年齢構成（65以上）</option>
-              <option value="score">必要度スコア</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>表示項目2（円サイズ）</span>
-            <select id="viz-select-secondary">
-              <option value="none">選択なし</option>
-              <option value="traffic">交通量</option>
-              <option value="population">人口</option>
-              <option value="labor">労働者数</option>
-              <option value="floor">床面積</option>
-              <option value="road_area_total">合計道路面積</option>
-              <option value="road_area_nat">国道面積</option>
-              <option value="road_area_pref">県道面積</option>
-              <option value="road_area_muni">市道面積</option>
-              <option value="road_area_other">その他面積</option>
-              <option value="ratio_0_14">年齢構成（0-15）</option>
-              <option value="ratio_15_64">年齢構成（15-65）</option>
-              <option value="ratio_65_over">年齢構成（65以上）</option>
-              <option value="score">必要度スコア</option>
-            </select>
-          </label>
+
+        <!-- グリッド設定エリア -->
+        <div id="viz-settings-grid">
+          <div class="section">
+            <h2>統計年度</h2>
+            <label class="field" style="flex-direction: row; gap: 12px;">
+              <label class="row gap" style="width: auto;">
+                <input type="radio" name="stats-year" value="2020" checked /> 2020年
+              </label>
+              <label class="row gap" style="width: auto;">
+                <input type="radio" name="stats-year" value="2015" /> 2015年
+              </label>
+              <label class="row gap" style="width: auto;">
+                <input type="radio" name="stats-year" value="2010" /> 2010年
+              </label>
+            </label>
+          </div>
+          <div class="section">
+            <h2>表示項目</h2>
+            <label class="field">
+              <span>表示項目1</span>
+              <select id="viz-select">
+                <option value="none">選択なし</option>
+                <option value="traffic">交通量</option>
+                <option value="population">人口</option>
+                <option value="labor">労働者数</option>
+                <option value="floor">床面積</option>
+                <option value="road_area_total">合計道路面積</option>
+                <option value="road_area_nat">国道面積</option>
+                <option value="road_area_pref">県道面積</option>
+                <option value="road_area_muni">市道面積</option>
+                <option value="road_area_other">その他面積</option>
+                <option value="ratio_0_14">年齢構成（0-15）</option>
+                <option value="ratio_15_64">年齢構成（15-65）</option>
+                <option value="ratio_65_over">年齢構成（65以上）</option>
+                <option value="score">必要度スコア</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>表示項目2（円サイズ）</span>
+              <select id="viz-select-secondary">
+                <option value="none">選択なし</option>
+                <option value="traffic">交通量</option>
+                <option value="population">人口</option>
+                <option value="labor">労働者数</option>
+                <option value="floor">床面積</option>
+                <option value="road_area_total">合計道路面積</option>
+                <option value="road_area_nat">国道面積</option>
+                <option value="road_area_pref">県道面積</option>
+                <option value="road_area_muni">市道面積</option>
+                <option value="road_area_other">その他面積</option>
+                <option value="ratio_0_14">年齢構成（0-15）</option>
+                <option value="ratio_15_64">年齢構成（15-65）</option>
+                <option value="ratio_65_over">年齢構成（65以上）</option>
+                <option value="score">必要度スコア</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <!-- ピン設定エリア（初期は非表示） -->
+        <div id="viz-settings-pin" class="is-hidden">
+          <div class="section">
+            <h2>読み込みデータ</h2>
+            <div class="status-grid">
+              <div class="status-card">
+                <span class="label">データ件数</span>
+                <span id="pin-data-count">0</span>
+              </div>
+              <div class="status-card">
+                <span class="label">データ日時</span>
+                <span id="pin-data-date">-</span>
+              </div>
+            </div>
+            <p class="hint" id="pin-data-status">データが読み込まれていません。</p>
+            <button class="btn" id="pin-load-data">再読み込み</button>
+          </div>
+
+          <div class="section">
+            <h2>表示項目の設定</h2>
+            <p class="muted">ポップアップに表示する項目を選択してください。</p>
+            <div class="row gap">
+              <label class="field" style="flex: 1;">
+                <select id="pin-field-select">
+                  <option value="">項目を選択...</option>
+                </select>
+              </label>
+              <button class="btn ghost" id="pin-field-add" type="button" style="width: auto;">＋ 追加</button>
+            </div>
+            <div class="field-list" id="pin-field-list" style="margin-top: 8px;">
+              <!-- 追加された項目がここに表示される -->
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>表示カラー設定</h2>
+            <p class="muted">判定区分により以下の色で表示されます。</p>
+            <div class="legend-list">
+              <div class="row gap" style="margin-bottom:4px;"><span
+                  style="display:inline-block;width:12px;height:12px;border-radius:50%;background-color:#ef4444;"></span>
+                <span>IV / III (早期・緊急措置)</span>
+              </div>
+              <div class="row gap" style="margin-bottom:4px;"><span
+                  style="display:inline-block;width:12px;height:12px;border-radius:50%;background-color:#f59e0b;"></span>
+                <span>II (予防保全)</span>
+              </div>
+              <div class="row gap" style="margin-bottom:4px;"><span
+                  style="display:inline-block;width:12px;height:12px;border-radius:50%;background-color:#3b82f6;"></span>
+                <span>I (健全)</span>
+              </div>
+              <div class="row gap"><span
+                  style="display:inline-block;width:12px;height:12px;border-radius:50%;background-color:#9ca3af;"></span>
+                <span>判定なし / その他</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>フィルタリング</h2>
+            <label class="field checkbox">
+              <input id="pin-filter-alert" type="checkbox" />
+              <span>措置が必要なデータのみ表示 (III, IV)</span>
+            </label>
+          </div>
         </div>
 
         <div class="section">
