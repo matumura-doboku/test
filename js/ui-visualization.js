@@ -24,8 +24,11 @@ import {
   vizYearRadios,
   vizModeSelect, // 追加
   vizSettingsGrid,
-  vizSettingsPin
+  vizSettingsPin,
+  filterFormulaWrap,
+  filterFormulaInput
 } from './dom.js';
+import { parseFilterExpression, registerLabels } from './filter-parser.js';
 import { state, vizThemes } from './state.js';
 
 const needsTraffic = (value) => value === 'traffic' || value === 'score';
@@ -198,9 +201,26 @@ function toggleFilterSection(section, show) {
 
 function updateFilterVisibility() {
   const mode = vizFilterMode?.value || 'none';
-  toggleFilterSection(filterPrimaryWrap, mode !== 'none');
+  toggleFilterSection(filterPrimaryWrap, mode !== 'none' && mode !== 'formula');
   toggleFilterSection(filterSecondaryWrap, mode === 'separate');
+  toggleFilterSection(filterFormulaWrap, mode === 'formula');
 }
+
+const GRID_LABELS = {
+  '交通量': 'traffic_value',
+  '人口': 'population_value',
+  '労働者数': 'labor_value',
+  '床面積': 'floor_value',
+  '合計道路面積': 'road_area_total',
+  '国道面積': 'road_area_nat',
+  '県道面積': 'road_area_pref',
+  '市道面積': 'road_area_muni',
+  'その他面積': 'road_area_other',
+  '年齢構成(0-14)': 'ratio_0_14',
+  '年齢構成(15-64)': 'ratio_15_64',
+  '年齢構成(65以上)': 'ratio_65_over',
+  'スコア': 'score_norm'
+};
 
 function formatRange(filter, label) {
   if (!filter || (filter.min == null && filter.max == null)) return null;
@@ -350,8 +370,18 @@ export function applyGridVisualization() {
   const secondaryTheme = vizThemes[secondaryMode] || vizThemes.traffic;
 
   const sharedPrimaryFilterExpr = buildFilterExpr(primaryFilterProp, primaryFilterSpec);
-  const primaryFilterExpr =
-    filterMode === 'primary-only' ? sharedPrimaryFilterExpr : buildFilterExpr(primaryFilterProp, primaryFilterSpec);
+
+  let primaryFilterExpr;
+  if (filterMode === 'formula') {
+    const parsed = parseFilterExpression(filterFormulaInput?.value);
+    // パース成功ならそれを条件に、失敗または空なら条件なしとして扱う（全表示またはエラー表示）
+    // ここではパース失敗時はfalse (非表示) にしてわかるようにするか、あるいはtrueにするか。
+    // 入力中は構文エラーになりがちなので、エラー時はデフォルトtrue(全表示)が無難か？
+    // いや、フィルタが効いているかわからないので、エラー時は表示しないほうがいいかも。
+    primaryFilterExpr = parsed || (filterFormulaInput?.value ? false : true);
+  } else {
+    primaryFilterExpr = filterMode === 'primary-only' ? sharedPrimaryFilterExpr : buildFilterExpr(primaryFilterProp, primaryFilterSpec);
+  }
   const secondaryFilterExpr =
     filterMode === 'primary-only' ? sharedPrimaryFilterExpr : buildFilterExpr(secondaryFilterProp, secondaryFilterSpec);
 
@@ -479,6 +509,8 @@ export function initVisualization() {
     });
   }
 
+  registerLabels(GRID_LABELS);
+
   setupRangeInputs(filterPrimaryType, filterPrimaryMin, filterPrimaryMax);
   setupRangeInputs(filterSecondaryType, filterSecondaryMin, filterSecondaryMax);
 
@@ -488,6 +520,10 @@ export function initVisualization() {
       updateFilterVisibility();
       applyGridVisualization();
     });
+  }
+
+  if (filterFormulaInput) {
+    filterFormulaInput.addEventListener('input', applyGridVisualization);
   }
 
   [vizFillOpacityInput, vizColorIntervalInput, vizCircleScaleInput].filter(Boolean).forEach((input) => {
@@ -500,7 +536,6 @@ export function initVisualization() {
     summaryShowConditions.addEventListener('change', updateConditionSummary);
   }
 
-  // モード切替の初期化
   // モード切替の初期化
   if (vizModeSelect) {
     vizModeSelect.addEventListener('change', () => {
@@ -527,22 +562,48 @@ export function initVisualization() {
   }
 }
 
+
 // レイヤー定義
 const GRID_LAYERS = ['grid-fill', 'grid-line', 'grid-circles', 'grid-top'];
 const PIN_LAYERS = ['imported-pins-circle'];
 
 // モード切替関数
 export function updateVisualizationMode() {
-  if (!vizModeSelect) return;
+  console.log('updateVisualizationMode called');
+  console.log('vizModeSelect exists:', !!vizModeSelect);
+  console.log('vizSettingsGrid exists:', !!vizSettingsGrid);
+  console.log('vizSettingsPin exists:', !!vizSettingsPin);
+
+  if (!vizModeSelect) {
+    console.warn('vizModeSelect not found, skipping');
+    return;
+  }
+
   const mode = vizModeSelect.value; // 'grid' or 'pin'
   const isGrid = mode === 'grid';
+  console.log('Current mode:', mode, 'isGrid:', isGrid);
 
-  // 1. パネル表示切替
-  if (vizSettingsGrid) vizSettingsGrid.classList.toggle('is-hidden', !isGrid);
-  if (vizSettingsPin) vizSettingsPin.classList.toggle('is-hidden', isGrid);
+  // 1. パネル表示切替（data属性で確実に制御）
+  if (vizSettingsGrid) {
+    vizSettingsGrid.setAttribute('data-active', isGrid ? 'true' : 'false');
+    console.log('vizSettingsGrid data-active:', vizSettingsGrid.getAttribute('data-active'));
+  }
+  if (vizSettingsPin) {
+    vizSettingsPin.setAttribute('data-active', isGrid ? 'false' : 'true');
+    console.log('vizSettingsPin data-active:', vizSettingsPin.getAttribute('data-active'));
+  }
+
+  // スクロール位置をリセット
+  const panelViz = document.getElementById('panel-viz');
+  if (panelViz) {
+    panelViz.scrollTop = 0;
+  }
 
   // 2. 地図レイヤーの表示切替
-  if (!state.map || !state.mapReady) return;
+  if (!state.map || !state.mapReady) {
+    console.log('Map not ready, skipping layer visibility');
+    return;
+  }
 
   // グリッドレイヤーの制御
   GRID_LAYERS.forEach(id => {

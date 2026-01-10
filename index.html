@@ -115,7 +115,7 @@
         </div>
 
         <!-- グリッド設定エリア -->
-        <div id="viz-settings-grid">
+        <div id="viz-settings-grid" data-active="true">
           <div class="section">
             <h2>統計年度</h2>
             <label class="field" style="flex-direction: row; gap: 12px;">
@@ -171,10 +171,90 @@
               </select>
             </label>
           </div>
+
+          <!-- 色付け条件（グリッド専用） -->
+          <div class="section">
+            <h2>色付け条件</h2>
+            <label class="field">
+              <span>条件モード</span>
+              <select id="viz-filter-mode">
+                <option value="none">絞り込みなし</option>
+                <option value="primary-only">項目1の条件結果のみ</option>
+                <option value="separate">項目1/2に個別条件</option>
+                <option value="formula">数式設定</option>
+              </select>
+            </label>
+
+            <div class="condition-set is-hidden" id="filter-primary">
+              <div class="condition-title">条件（項目1用）</div>
+              <div class="condition-row">
+                <select id="filter-primary-type">
+                  <option value="percent">割合（上位%）</option>
+                  <option value="value">値</option>
+                </select>
+                <div class="range-input">
+                  <input id="filter-primary-min" type="number" min="0" step="0.1" placeholder="例: 10" />
+                  <span>〜</span>
+                  <input id="filter-primary-max" type="number" min="0" step="0.1" placeholder="例: 30" />
+                </div>
+              </div>
+            </div>
+
+            <div class="condition-set is-hidden" id="filter-secondary">
+              <div class="condition-title">条件（項目2用）</div>
+              <div class="condition-row">
+                <select id="filter-secondary-type">
+                  <option value="percent">割合（上位%）</option>
+                  <option value="value">値</option>
+                </select>
+                <div class="range-input">
+                  <input id="filter-secondary-min" type="number" min="0" step="0.1" placeholder="例: 10" />
+                  <span>〜</span>
+                  <input id="filter-secondary-max" type="number" min="0" step="0.1" placeholder="例: 30" />
+                </div>
+              </div>
+            </div>
+            <p class="hint">割合は上位%区間（例: 10〜30）、値はそのまま数値範囲として扱います。</p>
+            <div class="condition-set is-hidden" id="filter-formula">
+              <div class="condition-title">条件式</div>
+              <div class="field">
+                <input id="filter-formula-input" type="text" placeholder="例: 人口 >= 100 AND 交通量 < 5000"
+                  style="width:100%; font-family: monospace;">
+              </div>
+              <p class="hint">利用可能: &gt;=, &lt;=, =, AND, ORなど</p>
+            </div>
+          </div>
+
+          <!-- 表示調整（グリッド専用） -->
+          <div class="section">
+            <h2>表示調整</h2>
+            <label class="field">
+              <span>色の透明度</span>
+              <input id="viz-fill-opacity" type="range" min="0" max="1" step="0.05" value="0.45" />
+            </label>
+            <label class="field">
+              <span>色の変化間隔</span>
+              <input id="viz-color-interval" type="range" min="20" max="200" step="5" value="100" />
+            </label>
+            <label class="field">
+              <span>円の大きさ</span>
+              <input id="viz-circle-scale" type="range" min="0.5" max="5" step="0.1" value="1" />
+            </label>
+          </div>
+
+          <!-- その他（グリッド専用） -->
+          <div class="section">
+            <h2>その他</h2>
+            <label class="field checkbox">
+              <input id="viz-fill-empty-black" type="checkbox" />
+              <span>色のついていないセルを黒塗り</span>
+            </label>
+          </div>
         </div>
+        <!-- END viz-settings-grid -->
 
         <!-- ピン設定エリア（初期は非表示） -->
-        <div id="viz-settings-pin" class="is-hidden">
+        <div id="viz-settings-pin" data-active="false">
           <div class="section">
             <h2>読み込みデータ</h2>
             <div class="status-grid">
@@ -236,75 +316,20 @@
               <input id="pin-filter-alert" type="checkbox" />
               <span>措置が必要なデータのみ表示 (III, IV)</span>
             </label>
-          </div>
-        </div>
 
-        <div class="section">
-          <h2>色付け条件</h2>
-          <label class="field">
-            <span>条件モード</span>
-            <select id="viz-filter-mode">
-              <option value="none">絞り込みなし</option>
-              <option value="primary-only">項目1の条件結果のみ</option>
-              <option value="separate">項目1/2に個別条件</option>
-            </select>
-          </label>
-
-          <div class="condition-set is-hidden" id="filter-primary">
-            <div class="condition-title">条件（項目1用）</div>
-            <div class="condition-row">
-              <select id="filter-primary-type">
-                <option value="percent">割合（上位%）</option>
-                <option value="value">値</option>
-              </select>
-              <div class="range-input">
-                <input id="filter-primary-min" type="number" min="0" step="0.1" placeholder="例: 10" />
-                <span>〜</span>
-                <input id="filter-primary-max" type="number" min="0" step="0.1" placeholder="例: 30" />
+            <div class="condition-set" style="margin-top: 12px;">
+              <div class="condition-title">数式による条件設定</div>
+              <div class="field">
+                <input id="pin-filter-formula" type="text" placeholder="例: 判定区分 >= 3 AND 年度 = 2020"
+                  style="width:100%; font-family: monospace;">
               </div>
+              <p class="hint">利用可能: &gt;=, &lt;=, =, AND, OR, AND(...), OR(...)</p>
+              <button class="btn ghost" id="pin-filter-apply" type="button" style="margin-top: 8px;">フィルタを適用</button>
+              <button class="btn ghost" id="pin-filter-clear" type="button" style="margin-top: 8px;">クリア</button>
             </div>
           </div>
-
-          <div class="condition-set is-hidden" id="filter-secondary">
-            <div class="condition-title">条件（項目2用）</div>
-            <div class="condition-row">
-              <select id="filter-secondary-type">
-                <option value="percent">割合（上位%）</option>
-                <option value="value">値</option>
-              </select>
-              <div class="range-input">
-                <input id="filter-secondary-min" type="number" min="0" step="0.1" placeholder="例: 10" />
-                <span>〜</span>
-                <input id="filter-secondary-max" type="number" min="0" step="0.1" placeholder="例: 30" />
-              </div>
-            </div>
-          </div>
-          <p class="hint">割合は上位%区間（例: 10〜30）、値はそのまま数値範囲として扱います。</p>
         </div>
-
-        <div class="section">
-          <h2>表示調整</h2>
-          <label class="field">
-            <span>色の透明度</span>
-            <input id="viz-fill-opacity" type="range" min="0" max="1" step="0.05" value="0.45" />
-          </label>
-          <label class="field">
-            <span>色の変化間隔</span>
-            <input id="viz-color-interval" type="range" min="20" max="200" step="5" value="100" />
-          </label>
-          <label class="field">
-            <span>円の大きさ</span>
-            <input id="viz-circle-scale" type="range" min="0.5" max="5" step="0.1" value="1" />
-          </label>
-        </div>
-
-        <div class="section">
-          <h2>その他</h2>
-          <label class="field checkbox">
-            <input id="viz-fill-empty-black" type="checkbox" />
-            <span>色のついていないセルを黒塗り</span>
-          </label>
-        </div>
+        <!-- END viz-settings-pin -->
 
       </section>
 

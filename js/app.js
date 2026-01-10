@@ -52,7 +52,22 @@ document.getElementById('app-reset')?.addEventListener('click', resetState);
 window.addEventListener('load', () => {
     // データ読み込み後の表示更新を確実にするため少し遅延させて適用
     setTimeout(() => {
-        applyGridVisualization();
-        updateVisualizationMode();
+        try {
+            applyGridVisualization();
+            updateVisualizationMode();
+            console.log('Initial visualization applied');
+        } catch (e) {
+            console.error('Error applying initial visualization:', e);
+        }
     }, 1000);
+});
+
+// DOMContentLoaded時にも初期状態を適用（早期に実行）
+document.addEventListener('DOMContentLoaded', () => {
+    try {
+        updateVisualizationMode();
+        console.log('DOMContentLoaded: visualization mode initialized');
+    } catch (e) {
+        console.error('DOMContentLoaded error:', e);
+    }
 });

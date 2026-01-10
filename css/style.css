@@ -113,6 +113,28 @@ body {
 
 .panel.active {
   display: flex;
+  overflow-y: auto;
+}
+
+#viz-settings-grid,
+#viz-settings-pin {
+  width: 100%;
+  display: none;
+  flex-direction: column;
+  gap: 16px;
+}
+
+
+/* data-active="true" の場合のみ表示 */
+#viz-settings-grid[data-active="true"],
+#viz-settings-pin[data-active="true"] {
+  display: flex !important;
+}
+
+/* data-active="false" の場合は完全に非表示 */
+#viz-settings-grid[data-active="false"],
+#viz-settings-pin[data-active="false"] {
+  display: none !important;
 }
 
 .section {
@@ -213,7 +235,15 @@ body {
 }
 
 .is-hidden {
-  display: none;
+  display: none !important;
+}
+
+#viz-settings-grid.is-hidden,
+#viz-settings-pin.is-hidden {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  overflow: hidden !important;
 }
 
 .row {

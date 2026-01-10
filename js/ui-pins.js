@@ -1,4 +1,5 @@
 import { state } from './state.js';
+import { registerLabels, parseFilterExpression } from './filter-parser.js';
 import {
     vizModeSelect,
     vizSettingsGrid,
@@ -8,6 +9,9 @@ import {
     pinDataStatus,
     pinLoadBtn,
     pinFilterAlert,
+    pinFilterFormula,
+    pinFilterApply,
+    pinFilterClear,
     pinFieldSelect,
     pinFieldAdd,
     pinFieldList
@@ -62,13 +66,26 @@ function getFieldLabel(key) {
 export function initPinVisualization() {
     if (!vizModeSelect) return;
 
-    // ... (イベントリスナー省略) ...
+    registerLabels(FIELD_LABELS);
+
     if (pinLoadBtn) {
         pinLoadBtn.addEventListener('click', loadPinData);
     }
 
     if (pinFilterAlert) {
         pinFilterAlert.addEventListener('change', updatePinFilter);
+    }
+
+    if (pinFilterApply) {
+        pinFilterApply.addEventListener('click', updatePinFilter);
+    }
+
+    if (pinFilterClear) {
+        pinFilterClear.addEventListener('click', () => {
+            if (pinFilterFormula) pinFilterFormula.value = '';
+            if (pinFilterAlert) pinFilterAlert.checked = false;
+            updatePinFilter();
+        });
     }
 
     if (pinFieldAdd) {
@@ -236,10 +253,34 @@ function addPinLayer(data) {
 function updatePinFilter() {
     if (!state.map || !state.map.getLayer('imported-pins-circle')) return;
 
-    const showOnlyAlert = pinFilterAlert.checked;
-    const filter = showOnlyAlert
-        ? ['in', ['get', 'hantei'], ['literal', [3, 4]]]
-        : null;
+    const showOnlyAlert = pinFilterAlert?.checked;
+    const formulaText = pinFilterFormula?.value?.trim();
+
+    let filter = null;
+    const conditions = [];
+
+    // チェックボックスの条件
+    if (showOnlyAlert) {
+        conditions.push(['in', ['get', 'hantei'], ['literal', [3, 4]]]);
+    }
+
+    // 数式の条件
+    if (formulaText) {
+        const parsedFormula = parseFilterExpression(formulaText);
+        if (parsedFormula) {
+            conditions.push(parsedFormula);
+        }
+    }
+
+    // 条件を組み合わせる
+    if (conditions.length === 0) {
+        filter = null; // フィルタなし（全表示）
+    } else if (conditions.length === 1) {
+        filter = conditions[0];
+    } else {
+        filter = ['all', ...conditions];
+    }
 
     state.map.setFilter('imported-pins-circle', filter);
+    console.log('Pin filter applied:', filter);
 }
