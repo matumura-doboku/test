@@ -501,9 +501,14 @@ export function initVisualization() {
   }
 
   // モード切替の初期化
+  // モード切替の初期化
   if (vizModeSelect) {
-    vizModeSelect.addEventListener('change', updateVisualizationMode);
-    // 初期状態の適用（少し遅延させて地図ロードを待つなどが必要かもしれないが、ここでは即時実行）
+    vizModeSelect.addEventListener('change', () => {
+      console.log('Mode changed:', vizModeSelect.value);
+      updateVisualizationMode();
+    });
+    // 初期状態の適用
+    console.log('Initializing viz mode:', vizModeSelect.value);
     updateVisualizationMode();
   }
 
