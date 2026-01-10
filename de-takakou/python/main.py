@@ -49,7 +49,7 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
     """
     Cloudflare Workers経由でデータをページネーションして取得し、座標変換を行う完全版関数
     """
-    limit = 100 # 1回あたりの取得件数 (安全のため小さめに)
+    limit = 500 # 1回あたりの取得件数 (API制限回避のため増やしてリクエスト回数を減らす)
     offset = 0
     total_data = []
     
@@ -183,9 +183,13 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
                 
                 # 取得完了条件
                 total_num = search_res.get("totalNumber", 0)
-                if len(total_data) >= total_num or count < limit or len(total_data) >= 500:
+                if len(total_data) >= total_num or count < limit or len(total_data) >= 5000:
                     print("INFO: 取得条件を満たしました (完了)")
                     break
+                
+                # APIのレートリミット対策として少し待機
+                if not is_mock:
+                    await asyncio.sleep(0.5)
 
             else:
                 # モックデータの生成
@@ -208,7 +212,7 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
 def generate_mock_batch(offset, limit, pref_code):
     """ページネーションの挙動をテストするためのモックデータ生成"""
     # 3ページ分(300件)だけ返すシミュレーション
-    if offset >= 300:
+    if offset >= 5000:
         return None
     
     mock_batch = []
