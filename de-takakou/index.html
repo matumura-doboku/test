@@ -105,6 +105,8 @@
                 <div class="button-group">
                     <button id="run-btn" class="run-button">データを取得・加工</button>
                     <button id="csv-btn" class="run-button secondary" disabled>CSV出力</button>
+                    <button id="send-btn" class="run-button primary" disabled
+                        style="background-color: #2563eb; color: white; margin-top: 10px;">メインシステムへ送信</button>
                 </div>
             </aside>
 
@@ -223,10 +225,11 @@
                 if (data && data.length > 0) {
                     renderPreview(data);
                     document.getElementById('preview-info').textContent = `${data.length} 件のデータを表示中`;
-                    
+
                     // データを保存してCSVボタンを有効化
                     currentData = data;
                     csvBtn.disabled = false;
+                    sendBtn.disabled = false;
                 } else {
                     appendLog('データが取得できなかったか、空でした。', 'error');
                 }
@@ -256,7 +259,7 @@
 
             // BOM付きUTF-8でBlobを作成 (Excelでの文字化け防止)
             const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
-            
+
             // ダウンロードリンクの生成とクリック
             const link = document.createElement('a');
             const url = URL.createObjectURL(blob);
@@ -266,6 +269,28 @@
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+        });
+
+        // メインシステムへ送信ボタンのイベント
+        const sendBtn = document.getElementById('send-btn');
+        sendBtn.addEventListener('click', () => {
+            if (!currentData || currentData.length === 0) return;
+
+            try {
+                // localStorageにデータを保存
+                localStorage.setItem('daredemoGIS_imported_data', JSON.stringify(currentData));
+                localStorage.setItem('daredemoGIS_import_timestamp', new Date().toISOString());
+
+                appendLog('データをメインシステムへ転送しました。移動します...', 'success');
+
+                // 親ディレクトリのindex.htmlへ移動
+                setTimeout(() => {
+                    window.location.href = '../index.html';
+                }, 1000);
+            } catch (e) {
+                appendLog('転送エラー: データが大きすぎて保存できませんでした。', 'error');
+                console.error(e);
+            }
         });
 
         // プレビューテーブルの描画
