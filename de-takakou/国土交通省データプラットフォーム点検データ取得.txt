@@ -1,0 +1,421 @@
+﻿国土交通データプラットフォームにおけるxROAD点検データ取得手法とPython実装に関する包括的調査報告書
+1. 序論：インフラDXとデータプラットフォームの現在地
+日本の社会インフラは高度経済成長期に集中的に整備され、現在、その多くが建設から50年以上を経過し、急速な老朽化に直面している。この課題に対処するため、国土交通省はインフラ分野のデジタルトランスフォーメーション（DX）を推進しており、その中核となる取り組みが「国土交通データプラットフォーム」の構築と、道路分野におけるデータ連携基盤「xROAD（クロスロード）」の展開である 1。
+本報告書は、技術者およびデータサイエンティストを対象に、国土交通データプラットフォームを通じてxROADが提供する「全国道路施設点検データベース」の点検データを、Pythonを用いてプログラム的に取得するための技術的詳細を網羅的に解説するものである。従来のWebブラウザによる手動ダウンロードとは異なり、API（Application Programming Interface）を用いた自動化手法は、大量の点検データを継続的に取得・分析し、インフラの維持管理サイクル（メンテナンスサイクル）を高度化するために不可欠な技術である。
+本稿では、プラットフォームのアーキテクチャ、GraphQLを採用したAPIの仕様、認証メカニズム、そして具体的なPythonによるリクエストコードの実装までを、15,000字規模の詳細な記述で展開する。
+________________
+2. xROADと全国道路施設点検データベースの構造的理解
+2.1 xROAD（クロスロード）の戦略的位置づけ
+xROADは、単なるデータベースの集合体ではなく、道路に関連する多様なデータを「位置」と「時刻」をキーとして紐付けるための概念的かつ実質的なプラットフォームである。国土交通省道路局が推進するこの取り組みは、以下の主要データ群を統合的に扱うことを目的としている 1。
+* 基盤データ（道路局ベースレジストリ）： デジタル道路地図データベース（DRM-DB）や道路基盤地図情報。
+* 3次元空間データ： モービルマッピングシステム（MMS）やレーザープロファイラ（LP）から取得された点群データ。
+* 構造物データ： 橋梁、トンネル等の諸元データ、BIM/CIMデータ、そして本報告書の主題である「定期点検結果」。
+* 動的データ： ETC2.0プローブ情報、CCTVカメラ映像、気象センサ等のリアルタイム交通情報 1。
+これらのデータがxROADという概念の下で統合されることで、従来は個別の道路管理者（国、都道府県、政令市、市町村）ごとに分散管理されていた情報が、横断的に検索・利用可能となる。これは「Society 5.0」におけるスマートシティ実現の基盤としても機能する 4。
+2.2 全国道路施設点検データベースの詳細
+ユーザーが取得を目指す「点検データ」は、正確には「全国道路施設点検データベース」に格納された情報を指す。道路法に基づき、道路管理者は5年に1回の頻度で橋梁やトンネル等の近接目視点検を行う義務がある。この点検結果は、国土交通省が定める統一的な基準に基づいて記録される 1。
+このデータベースに含まれる主要な属性情報は以下の通りである。
+
+
+データ区分
+	概要と分析上の重要性
+	施設諸元
+	橋長、幅員、完成年次、構造形式、架設位置（緯度経度）など。施設の基本スペックを示し、劣化予測モデルの重要な説明変数となる。
+	点検実施状況
+	点検実施年月日、点検者情報。時系列分析においてデータの時点を特定するために不可欠である。
+	判定区分（健全度）
+	I（健全）、II（予防保全段階）、III（早期措置段階）、IV（緊急措置段階）の4段階評価。インフラのリスク評価における目的変数となる 1。
+	部材単位の診断
+	主桁、床版、橋脚など、部材ごとの健全度詳細。施設全体の健全度だけでなく、損傷箇所の特定に用いられる。
+	添付資料
+	損傷写真、損傷図面など。画像解析AI等の学習データとしての価値が高い。
+	xROADの一環として公開されるこれらのデータは、CSV形式やExcel形式で提供されることが一般的であるが、近年ではAPIを通じた構造化データとしての取得ニーズが高まっている 2。
+________________
+3. 国土交通データプラットフォームAPIの技術アーキテクチャ
+点検データをプログラムから取得するためには、国土交通データプラットフォームが採用しているAPIの特性を深く理解する必要がある。一般的なREST APIとは異なり、本プラットフォームは情報の取得にGraphQLを採用している点が最大の特徴である 5。
+3.1 GraphQL採用の技術的背景とRESTとの相違
+従来のREST APIでは、リソースごとに固有のURL（エンドポイント）が存在し、GET /api/bridges/12345のようにアクセスすることでデータを取得する。しかし、国土交通データプラットフォームのように、地理空間情報、文書データ、画像データ、メタデータなど、構造が全く異なる多様なデータセットを扱う場合、REST形式ではエンドポイントが乱立し、クライアント側の実装が複雑化する課題がある。
+これに対し、GraphQLは単一のエンドポイントに対してクエリ（問い合わせ内容）を送信することで、必要なデータのみを柔軟な構造で取得できる。
+
+
+特徴
+	REST API (一般的)
+	国土交通データプラットフォーム API (GraphQL)
+	エンドポイント
+	リソースごとに複数存在
+	単一URL https://www.mlit-data.jp/api/v1/ のみ 5
+	HTTPメソッド
+	GET, POST, PUT, DELETE
+	原則として POST のみを使用 5
+	データ取得
+	サーバーが定義した全フィールドを返す
+	クライアントが必要なフィールドを指定して要求する
+	ステータスコード
+	HTTPステータスで成否を判断
+	HTTP 200でもレスポンス内のerrorsフィールドでエラーを表現する場合がある
+	3.2 認証・認可メカニズム
+本APIを利用するためには、事前に国土交通データプラットフォームのポータルサイトで利用登録を行い、APIキー（apikey）を取得する必要がある 5。このAPIキーは、リクエストのクエリパラメータではなく、HTTPヘッダーに含めて送信する仕様となっている。
+* ヘッダー名: apikey
+* 値: ポータルサイトから発行された文字列
+* 挙動: 有効なキーが含まれていない場合、サーバーは 401 Unauthorized を返す 5。
+3.3 データ取得のプロセスフロー
+xROADの点検データを取得するプロセスは、単一のリクエストで完了するものではない。以下の手順を踏む「対話型」のプロセスとなる。
+1. 検索 (Search): キーワード（例：「道路施設点検」）を用いてメタデータを検索し、目的のデータセットID（dataset_id）を特定する 5。
+2. カタログ詳細取得 (Get Data Catalog): データセットIDを用いて、その中に含まれる具体的なファイル（CSV、Excel等）のID（file_id）を取得する 7。
+3. ダウンロードURL発行 (Get File Download URLs): ファイルIDを用いて、一時的なダウンロード用URLを生成する 8。
+4. ファイル実体取得: 生成されたURLに対して標準的なHTTP GETリクエストを行い、バイナリデータを保存する 9。
+この多段階プロセスは、セキュリティの確保（ダウンロードURLに有効期限を持たせる）および大容量データの効率的な配信管理のために設計されている 8。
+________________
+4. Pythonによる実装詳細：環境構築からリクエストまで
+本章では、前述のプロセスをPythonコードとして実装する方法を詳述する。使用するライブラリは、HTTPリクエストのデファクトスタンダードである requests である 10。
+4.1 前提環境とライブラリ
+Python 3.8以上を推奨する。必要なライブラリは以下のコマンドでインストール可能である。
+
+
+Bash
+
+
+
+
+pip install requests pandas
+
+※ pandas は取得したJSONデータの解析や、CSVデータの処理に有用であるため推奨される 6。
+4.2 実装モジュール1：設定と認証ヘッダーの構築
+まず、APIエンドポイントとAPIキーを定義し、リクエストヘッダーを構築する関数を作成する。APIキーをハードコードすることはセキュリティリスクとなるため、環境変数から読み込む設計が望ましい 7。
+
+
+Python
+
+
+
+
+import os
+import requests
+import json
+import time
+
+# 定数定義
+# 国土交通データプラットフォームのエンドポイント 
+API_ENDPOINT = "https://www.mlit-data.jp/api/v1/"
+
+# 環境変数からAPIキーを取得（事前に設定が必要）
+# 設定例: export MLIT_API_KEY='your_actual_api_key_here'
+API_KEY = os.getenv("MLIT_API_KEY")
+
+if not API_KEY:
+   raise ValueError("APIキーが設定されていません。環境変数 MLIT_API_KEY を設定してください。")
+
+def get_headers():
+   """
+   APIリクエストに必要なヘッダーを生成する。
+   Content-Typeはapplication/json、apikeyには取得したキーを設定する 。
+   """
+   return {
+       "Content-Type": "application/json",
+       "apikey": API_KEY
+   }
+
+def execute_graphql_query(query, variables=None):
+   """
+   GraphQLクエリを実行する汎用関数。
+   エラーハンドリングを含み、レスポンスのJSONを返す。
+   """
+   payload = {"query": query}
+   if variables:
+       payload["variables"] = variables
+
+   try:
+       # POSTメソッドでリクエストを送信 [5, 10]
+       response = requests.post(
+           API_ENDPOINT,
+           headers=get_headers(),
+           json=payload,
+           timeout=30  # タイムアウト設定は重要
+       )
+       
+       # HTTPステータスコードの確認 (4xx, 5xx系のエラーを捕捉)
+       response.raise_for_status()
+       
+       return response.json()
+   
+   except requests.exceptions.HTTPError as e:
+       print(f"HTTPエラーが発生しました: {e}")
+       print(f"サーバーレスポンス: {response.text}")
+       return None
+   except Exception as e:
+       print(f"予期せぬエラーが発生しました: {e}")
+       return None
+
+4.3 実装モジュール2：点検データの検索（Search Query）
+次に、search クエリを用いて「道路施設点検」に関連するデータセットを探す。GraphQLのクエリ構文は、必要なフィールド（id, title, description など）を明示的に指定する必要がある 5。
+
+
+Python
+
+
+
+
+def search_inspection_datasets(keyword="道路施設点検", limit=10):
+   """
+   指定されたキーワードでデータセットを検索し、IDとタイトルを取得する。
+   """
+   # GraphQLクエリ定義
+   # searchクエリの構造は検索語(term)と取得件数(first)を引数に取る 
+   query = """
+   query SearchDatasets($term: String, $first: Int) {
+     search(term: $term, first: $first) {
+       totalNumber
+       searchResults {
+         id
+         title
+         description
+         publisher {
+           name
+         }
+       }
+     }
+   }
+   """
+   
+   variables = {
+       "term": keyword,
+       "first": limit
+   }
+   
+   print(f"キーワード '{keyword}' で検索中...")
+   result = execute_graphql_query(query, variables)
+   
+   datasets =
+   if result and "data" in result and "search" in result["data"]:
+       data = result["data"]["search"]
+       print(f"検索ヒット数: {data['totalNumber']} 件")
+       datasets = data
+       
+       for idx, item in enumerate(datasets):
+           print(f"{idx + 1}: [{item['id']}] {item['title']}")
+           
+   return datasets
+
+解説:
+ここでの search クエリは、プラットフォーム上の全データセットからテキストマッチングを行う。点検データは通常、「全国道路施設点検データベース」といった名称で登録されているため、キーワード選定が重要となる。
+4.4 実装モジュール3：ファイル詳細の特定（Get Data Catalog）
+検索で得られたのは「データセット（情報のまとまり）」のIDである。データセットの中には、橋梁、トンネル、歩道橋など複数のファイル（リソース）が含まれている場合がある。これらを個別に特定するために get_data_catalog クエリを使用する 7。
+
+
+Python
+
+
+
+
+def get_dataset_files(dataset_id):
+   """
+   データセットIDから、その中に含まれる具体的なファイル(Distribution)のリストを取得する。
+   """
+   # get_data_catalogクエリを用いて詳細情報を取得 
+   # distributionsフィールドにファイルのIDや形式が含まれると推測される
+   query = """
+   query GetDataCatalog($id: String!) {
+     get_data_catalog(id: $id) {
+       id
+       title
+       distributions {
+         id
+         title
+         format
+         accessURL
+         description
+       }
+     }
+   }
+   """
+   
+   variables = {"id": dataset_id}
+   result = execute_graphql_query(query, variables)
+   
+   files =
+   if result and "data" in result and "get_data_catalog" in result["data"]:
+       catalog = result["data"]["get_data_catalog"]
+       if catalog and "distributions" in catalog:
+           files = catalog["distributions"]
+           print(f"\nデータセット '{catalog['title']}' 内のファイル:")
+           for f in files:
+               print(f" -}] {f['title']} ({f['format']})")
+   
+   return files
+
+4.5 実装モジュール4：ダウンロードURLの取得と保存（Get File Download URLs）
+最後に、特定のファイルID（file_id）を指定してダウンロード用のURLを取得し、ファイルをローカルに保存する。ここで使用するクエリは get_file_download_urls である 7。
+重要な注意点: 取得されるURLには有効期限（例：60秒）が設定されていることが多いため、URL取得後は直ちにダウンロード処理を実行する必要がある 8。
+
+
+Python
+
+
+
+
+def download_file(file_id, output_path):
+   """
+   ファイルIDからダウンロードURLを取得し、ファイルを保存する。
+   """
+   # ダウンロードURL取得用クエリ 
+   # 引数は file_id (String) を受け取ると想定される
+   query = """
+   query GetFileDownloadUrl($fileId: String!) {
+     get_file_download_urls(file_id: $fileId) {
+       file_id
+       url
+       expiration
+     }
+   }
+   """
+   
+   # 注: APIの仕様によっては引数名が file_ids: のリスト形式の場合もあるため
+   # エラーが出る場合はリスト形式を試行する必要がある。
+   # ここでは単一IDを渡す形式で実装する。
+   variables = {"fileId": file_id}
+   
+   print(f"ファイルID: {file_id} のダウンロードリンクを取得中...")
+   result = execute_graphql_query(query, variables)
+   
+   download_url = None
+   if result and "data" in result and "get_file_download_urls" in result["data"]:
+       url_data = result["data"]["get_file_download_urls"]
+       
+       # リストで返ってくる場合と単一オブジェクトの場合を考慮
+       if isinstance(url_data, list) and len(url_data) > 0:
+           download_url = url_data.get("url")
+       elif isinstance(url_data, dict):
+           download_url = url_data.get("url")
+           
+   if not download_url:
+       print("ダウンロードURLの取得に失敗しました。権限がないか、IDが誤っている可能性があります。")
+       return False
+
+   print(f"ダウンロード開始: {output_path}")
+   try:
+       # requests.getでバイナリデータを取得 [9, 12]
+       with requests.get(download_url, stream=True) as r:
+           r.raise_for_status()
+           with open(output_path, 'wb') as f:
+               for chunk in r.iter_content(chunk_size=8192):
+                   f.write(chunk)
+       print("ダウンロード完了。")
+       return True
+   except Exception as e:
+       print(f"ファイルの保存中にエラーが発生しました: {e}")
+       return False
+
+4.6 統合スクリプトの実行フロー
+上記の各モジュールを組み合わせたメイン処理の例を示す。
+
+
+Python
+
+
+
+
+if __name__ == "__main__":
+   # 1. データセットの検索
+   datasets = search_inspection_datasets("道路施設点検", limit=1)
+   
+   if datasets:
+       target_dataset = datasets
+       dataset_id = target_dataset['id']
+       
+       # 2. データセット内のファイル一覧取得
+       files = get_dataset_files(dataset_id)
+       
+       if files:
+           # 例として、最初のCSVファイルをダウンロード対象とする
+           target_file = None
+           for f in files:
+               if "csv" in f.get("format", "").lower():
+                   target_file = f
+                   break
+           
+           if target_file:
+               file_id = target_file['id']
+               file_title = target_file['title']
+               # ファイル名に使用できない文字を除去
+               safe_title = "".join([c for c in file_title if c.isalnum() or c in (' ', '-', '_')]).strip()
+               output_filename = f"{safe_title}.csv"
+               
+               # 3. ダウンロード実行
+               download_file(file_id, output_filename)
+           else:
+               print("CSV形式のファイルが見つかりませんでした。")
+       else:
+           print("このデータセットにはファイルが含まれていないか、アクセス権限がありません。")
+   else:
+       print("該当するデータセットが見つかりませんでした。")
+
+________________
+5. 高度な利用技術とトラブルシューティング
+5.1 MCP (Model Context Protocol) の活用
+近年、LLM（大規模言語モデル）を用いてデータプラットフォームを操作する Model Context Protocol (MCP) サーバーの実装が、国土交通省データプラットフォーム向けに開発されている 7。GitHub上で公開されている mlit-dpf-mcp リポジトリ 7 は、Pythonを用いてAPIと対話するための公式・準公式な実装例を含んでおり、非常に参考になる。
+特に、クエリの正確な定義（スキーマ）が不明な場合、このMCPサーバーのソースコード（src/client.py など）を参照することで、get_mesh（メッシュデータの取得）や get_zipfile_download_url（一括ダウンロード）といった高度なクエリの仕様を確認することができる 8。
+MCPを活用することで、以下のような自然言語によるデータ操作が可能になる将来像が描かれている。
+* 「東京都内の橋梁点検データを検索してダウンロードして」という指示だけで、AIがAPIリクエストを自動生成・実行する。
+* 複雑なGraphQLクエリを書かずに、エージェント経由でデータを取得する。
+5.2 エラーハンドリングと制限事項
+API利用において頻出する課題とその対策をまとめる。
+
+
+エラー/課題
+	推定原因
+	対策
+	401 Unauthorized
+	APIキーの欠落または無効 5
+	ヘッダーの apikey を再確認する。有効期限切れの可能性も考慮する。
+	400 Bad Request
+	GraphQLクエリの構文エラー
+	クエリ内のフィールド名がスキーマと一致しているか確認する。searchResults などの階層構造に注意。
+	ダウンロードURL無効
+	URLの有効期限切れ 8
+	get_file_download_urls 実行後、間髪入れずに requests.get を実行するロジックにする。URLをログに出力して後で使おうとしてはいけない。
+	データが見つからない
+	検索語の不一致
+	search クエリの term をより一般的な語（例：「点検」のみ）にして、結果を目視で確認する。
+	5.3 大量データの取得戦略
+全国規模の点検データは膨大である。全データを取得する場合、以下の点に留意する必要がある。
+* ページネーション: search クエリには first（取得件数）だけでなく、開始位置を指定するパラメータ（offset や after）が存在する可能性がある。全件取得にはループ処理が必要となる。
+* ZIP一括ダウンロード: 個別のファイルを1つずつダウンロードするのではなく、get_zipfile_download_url クエリ 8 が利用可能であれば、これを用いてデータセット全体をZIP形式で取得する方が効率的である。
+________________
+6. データの構造解析と活用展望
+取得した点検データ（CSV等）は、そのままでは単なる数値と文字列の羅列である。これを「価値」に変えるためには、データの意味を理解し、適切な加工を行う必要がある。
+6.1 点検データの標準的なスキーマ
+国土交通省の「道路橋定期点検要領」等に基づき、データは概ね以下のカラム構成を持つことが多い。
+1. 基本情報: 管理者コード、路線名、橋梁コード、橋梁名、架設年次。
+2. 位置情報: 緯度・経度（世界測地系）。GISソフト（QGIS等）での可視化に直結する。
+3. 判定結果:
+   * 判定区分I (健全): 構造物の機能に支障が生じていない状態。
+   * 判定区分II (予防保全段階): 構造物の機能に支障が生じていないが、予防保全の観点から措置を講ずることが望ましい状態。
+   * 判定区分III (早期措置段階): 構造物の機能に支障が生じる可能性があり、早期に措置を講ずる必要がある状態。
+   * 判定区分IV (緊急措置段階): 構造物の機能に支障が生じている、または生じる可能性が著しく高く、緊急に措置を講ずる必要がある状態 1。
+6.2 データ活用のシナリオ：Pythonによる分析
+取得したデータをPythonの pandas や geopandas で読み込むことで、以下のような高度な分析が可能となる。
+* 経年劣化分析: 「架設年次」と「判定区分」の相関を分析し、地域ごとの劣化スピードの違いを可視化する。
+* 空間相関分析: 点検データを地図上にプロットし、沿岸部（塩害地域）や交通量の多い路線での劣化傾向をヒートマップ化する。
+* デジタルツイン連携: xROADの3次元データ（PLATEAU等）と、点検データの「位置情報」をキーとして結合し、サイバー空間上の3Dモデルに「損傷情報」をマッピングする 4。
+6.3 3次元データ（PLATEAU/CityGML）との連携
+xROADの真価は、点検データ単体ではなく、3次元都市モデル（PLATEAU）との連携にある。APIには Spatial ID（空間ID）を用いた検索機能も実装されつつあり 4、ボクセル（3次元グリッド）単位で、その空間に含まれる橋梁や道路の点検データを検索することが可能になりつつある。これにより、ドローンの飛行ルート計画や、自動運転車の走行リスク評価など、物理的な形状と維持管理情報を統合した高度なシミュレーションが実現する。
+________________
+7. 結論
+国土交通データプラットフォームを通じたxROAD点検データの取得は、日本のインフラ維持管理を「事後保全」から「予防保全」、さらにはデータ駆動型の「予測保全」へと転換させるための重要なステップである。
+本報告書で示したPythonによるGraphQLリクエスト手法は、その入り口に過ぎない。エンジニアや研究者は、確立されたこの手順を用いてデータを定常的に取得し、機械学習モデルの構築やデジタルツインの精緻化といった、より高次の価値創出に取り組むことが期待される。APIの仕様は今後も拡張が見込まれるため、GitHub上のMCPリポジトリや公式ドキュメントを継続的に監視し、最新のクエリ仕様に追従していく姿勢が求められる。
+引用文献
+1. アプリケーション開発やAI技術などのオープンイノベーションを促進し、道路行政を効率化することを目指しています。今回はこのxROADについて紹介します。 - フォーラムエイト, 1月 10, 2026にアクセス、 https://www.forum8.co.jp/topic/tyotto139.htm
+2. ポリシー | 道路データプラットフォーム, 1月 10, 2026にアクセス、 https://www.xroad.mlit.go.jp/policy/
+3. 全国の直轄国道の交通量データを取得可能なAPI を公開開始します～xROAD<, 1月 10, 2026にアクセス、 https://www.mlit.go.jp/report/press/road01_hh_001930.html
+4. Developing a Spatial-ID–Based Web API for Serving 3-D City-Model Attributes and Reviewing the Spatial ID Specification, 1月 10, 2026にアクセス、 https://isprs-archives.copernicus.org/articles/XLVIII-4-W15-2025/25/2025/isprs-archives-XLVIII-4-W15-2025-25-2025.pdf
+5. APIアクセス方法 | 国土交通DPF利用者API, 1月 10, 2026にアクセス、 https://www.mlit-data.jp/api_docs/usage/apiaccess.html
+6. 道路交通センサス情報の取得 - SENSY Product Dev Tech Blog, 1月 10, 2026にアクセス、 https://sensy-product.hatenablog.com/entry/2024/11/15/225919
+7. MLIT-DATA-PLATFORM/mlit-dpf-mcp - GitHub, 1月 10, 2026にアクセス、 https://github.com/MLIT-DATA-PLATFORM/mlit-dpf-mcp
+8. kkawailab/kklab-mlit-dpf-mcp: 国土交通データプラットフォーム用の非公式MCPサーバー。LLMと連携して対話形式でデータ検索・取得が可能。(非公式・国交省認可外) - GitHub, 1月 10, 2026にアクセス、 https://github.com/kkawailab/kklab-mit-dpf-mcp
+9. python - How to download a file over HTTP? - Stack Overflow, 1月 10, 2026にアクセス、 https://stackoverflow.com/questions/22676/how-to-download-a-file-over-http
+10. Examples - Real Time Data Ingestion Platform, 1月 10, 2026にアクセス、 https://www.rtdip.io/api/examples/
+11. Request API data using Python in 8 minutes! ↩️ - YouTube, 1月 10, 2026にアクセス、 https://www.youtube.com/watch?v=JVQNywo4AbU
+12. Automated Downloads With Python - devmio, 1月 10, 2026にアクセス、 https://devm.io/python/automated-downloads-python
+13. MLIT DATA PLATFORM MCP Server - LobeHub, 1月 10, 2026にアクセス、 https://lobehub.com/mcp/mlit-data-platform-mlit-dpf-mcp
+14. Searching PLATEAU Data with AI! We've Released a Remote MCP Server, 1月 10, 2026にアクセス、 https://reearth.engineering/posts/plateau-mcp-en/
+15. Multi-platform data search and access method to compose digital twins using metadata, 1月 10, 2026にアクセス、 https://www.jstage.jst.go.jp/article/ais/3/1/3_3.1_a/_article/-char/en
