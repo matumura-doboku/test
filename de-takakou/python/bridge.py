@@ -1,15 +1,16 @@
 """
 橋梁データ（xROAD）取得専用モジュール
+main.py のロジックをベースに、フィールド名の日本語化を加えたもの
 """
 import json
 import asyncio
 from pyodide.http import pyfetch
 
 # Cloudflare Workers プロキシ
-PROXY_ENDPOINT = "https://mlit-user-proxy.gyorui-sawara.workers.dev/api/v1/"
+WORKER_ENDPOINT = "https://mlit-user-proxy.gyorui-sawara.workers.dev"
+RESOURCE_PATH = "/api/v1/"
 
-# フィールドラベル定義（橋梁・道路専用）
-# mlit_fetcher.py の XROAD_FIELD_LABELS と同期
+# フィールドラベル定義（橋梁専用）
 BRIDGE_FIELD_LABELS = {
     'id': 'ID',
     'title': '施設名称',
@@ -37,7 +38,6 @@ BRIDGE_FIELD_LABELS = {
     'meta_RSDB:kanrisya_code': '管理者コード',
     'meta_RSDB:shisetsu_kubun': '施設区分',
     'meta_RSDB:koushin_nichiji': '更新日時',
-    # DPF系メタデータも追加
     'meta_DPF:title': 'タイトル(DPF)',
     'meta_DPF:route_name': '路線名(DPF)',
     'meta_DPF:prefecture_name': '都道府県(DPF)',
@@ -84,100 +84,89 @@ def process_bridge_item(item):
 class BridgeFetcher:
     def __init__(self, api_key):
         self.api_key = api_key
-        self.endpoint = PROXY_ENDPOINT
+        # URL生成ロジックをmain.pyに合わせる
+        base = WORKER_ENDPOINT.rstrip('/')
+        path = RESOURCE_PATH.lstrip('/') if RESOURCE_PATH.startswith('/') else RESOURCE_PATH
+        self.url = f"{base}/{path}"
         
     async def fetch(self, pref_name, max_records=5000):
-        """橋梁・道路データを取得（ページネーション＆複数キーワード対応）"""
-        search_terms = ["橋梁", "道路中心線", "道路施設"]
-        
+        """橋梁データを取得（main.py準拠のページネーション）"""
         print(f"INFO: [BridgeFetcher] {pref_name} のデータを検索します")
-        print(f"INFO: キーワード: {', '.join(search_terms)}")
         
-        total_data = {}  # IDで重複排除用
         limit = 500
+        offset = 0
+        total_data = []
         
         headers = {"apikey": self.api_key, "Content-Type": "application/json"}
 
-        for term in search_terms:
-            print(f"INFO: キーワード「{term}」で検索中...")
-            offset = 0
-            
-            while True:
-                # GraphQLクエリ
-                query = f"""
-                query {{
-                    search(
-                        term: "{term}"
-                        phraseMatch: true
-                        first: {offset}
-                        size: {limit}
-                        attributeFilter: {{
-                            attributeName: "DPF:prefecture_name",
-                            is: "{pref_name}"
-                        }}
-                    ) {{
-                        totalNumber
-                        searchResults {{
-                            id
-                            title
-                            lat
-                            lon
-                            metadata
-                        }}
+        # main.pyと同じシンプルなループ構造
+        while True:
+            query = f"""
+            query {{
+                search(
+                    term: "橋梁"
+                    phraseMatch: true
+                    first: {offset}
+                    size: {limit}
+                    attributeFilter: {{
+                        attributeName: "DPF:prefecture_name",
+                        is: "{pref_name}"
+                    }}
+                ) {{
+                    totalNumber
+                    searchResults {{
+                        id
+                        title
+                        lat
+                        lon
+                        metadata
                     }}
                 }}
-                """
-                
-                try:
-                    res = await pyfetch(self.endpoint, method="POST", headers=headers, body=json.dumps({"query": query}))
-                    if res.status != 200:
-                        print(f"ERROR: API Error {res.status}")
-                        break
-                        
-                    json_res = await res.json()
-                    if "errors" in json_res:
-                        print(f"ERROR: GraphQL Error: {json_res['errors']}")
-                        break
-                        
-                    data_block = json_res.get("data", {}).get("search", {})
-                    hits = data_block.get("searchResults", [])
-                    total_num = data_block.get("totalNumber", 0)
-                    
-                    if not hits:
-                        break
-                    
-                    # データ処理と蓄積
-                    for item in hits:
-                        processed = process_bridge_item(item)
-                        # IDをキーにしてユニーク化
-                        # 変換後のラベルでは 'ID' になるが、元の 'id' も存在する可能性があるため注意
-                        # process_bridge_itemで 'id' -> 'ID' に変換されている
-                        if 'ID' in processed:
-                            total_data[processed['ID']] = processed
-                        elif 'id' in processed:
-                            total_data[processed['id']] = processed
-                        else:
-                            # IDがない場合はリストに追加するしかないが、今回はID前提
-                            pass
-                            
-                    count = len(hits)
-                    offset += count
-                    
-                    print(f"INFO: ... {term} {offset}/{total_num} 件 取得")
-                    
-                    if offset >= total_num or count < limit or len(total_data) >= max_records:
-                        break
-                        
-                    await asyncio.sleep(0.3)
-                    
-                except Exception as e:
-                    print(f"ERROR: Fetch failed: {e}")
-                    break
+            }}
+            """
             
-            if len(total_data) >= max_records:
-                print("INFO: 最大件数に達しました")
+            body_data = {"query": query, "variables": {}}
+            
+            try:
+                print(f"DEBUG: Fetching offset={offset}...")
+                res = await pyfetch(self.url, method="POST", headers=headers, body=json.dumps(body_data))
+                
+                if res.status != 200:
+                    print(f"ERROR: API Error {res.status}")
+                    text = await res.string()
+                    print(f"Details: {text}")
+                    break
+                    
+                json_res = await res.json()
+                if "errors" in json_res:
+                    print(f"ERROR: GraphQL Error: {json_res['errors']}")
+                    break
+                    
+                data_block = json_res.get("data", {}).get("search", {})
+                hits = data_block.get("searchResults", [])
+                total_num = data_block.get("totalNumber", 0)
+                
+                # データ処理
+                processed_batch = []
+                for item in hits:
+                     processed_batch.append(process_bridge_item(item))
+                
+                count = len(processed_batch)
+                total_data.extend(processed_batch)
+                offset += count
+                
+                print(f"INFO: {len(total_data)}/{total_num} 件 取得完了...")
+                
+                # 終了条件（main.py準拠）
+                if len(total_data) >= total_num or count < limit or len(total_data) >= max_records:
+                    print("INFO: 取得条件を満たしました (完了)")
+                    break
+                    
+                await asyncio.sleep(0.5)
+                
+            except Exception as e:
+                print(f"ERROR: Fetch failed: {e}")
                 break
                 
-        final_list = list(total_data.values())
-        print(f"SUCCESS: [BridgeFetcher] 合計 {len(final_list)} 件のデータを取得しました")
-        return final_list
+        print(f"SUCCESS: [BridgeFetcher] 合計 {len(total_data)} 件のデータを取得しました")
+        return total_data
