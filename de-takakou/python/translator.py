@@ -44,25 +44,16 @@ FIELD_LABELS = {
     'meta_DPF:municipality_name': 'meta_DPF:related_count',
 }
 
-def translate_keys_list(data_list):
+def translate_headers(headers_list):
     """
-    データのキーを日本語（または読みやすい形式）に変換する
-    リスト全体を処理して新しいリストを返す
+    ヘッダー（キー）のリストを受け取り、翻訳後のヘッダーリストと
+    {旧キー: 新キー} のマッピング辞書を返す。
+    「最上端のみで変換をかける」ためのコア関数。
     """
-    if not data_list:
-        return []
-
-    # 1. すべてのデータに含まれる「キー（カラム名）」のユニークなリストを取得
-    # データ構造が均一なら data_list[0].keys() だけで十分だが、念のため全走査して和集合をとるか、
-    # 速度優先なら「最初の100件」くらいから全カラムを拾うアプローチが良い。
-    # ここではシンプルかつそれなりに高速な方法として、データの最初の1件を代表とする
-    # (APIデータは通常スキーマが決まっているため)
-    sample_keys = data_list[0].keys()
+    translated_headers = []
+    mapping = {}
     
-    # 2. キーごとの変換マップを作成 (ここだけ重い処理を行う)
-    # カラム数分(数十〜数百)しかループしないので一瞬で終わる
-    key_mapping = {}
-    for key in sample_keys:
+    for key in headers_list:
         new_key = key
         
         # (A) 辞書完全一致
@@ -71,7 +62,6 @@ def translate_keys_list(data_list):
         else:
             # (B) 揺らぎ吸収 (正規化)
             normalized_attempt = key
-            # パフォーマンスのため、明らかに対象になりそうな場合のみ試行
             if any(x in key for x in ['shogen', 'kanrisha', 'meisho', 'jimusho', 'shuzen', 'kyocho', 'jokyo']):
                 normalized_attempt = key.replace('shogen', 'syogen') \
                                         .replace('kanrisha', 'kanrisya') \
@@ -92,24 +82,32 @@ def translate_keys_list(data_list):
                 elif '_' in key and ('meta_RSDB' in key or 'meta_DPF' in key):
                      new_key = key.replace('meta_RSDB_', '').replace('meta_DPF_', '')
         
-        key_mapping[key] = new_key
+        translated_headers.append(new_key)
+        mapping[key] = new_key
+        
+    return translated_headers, mapping
 
-    # 3. 作成したマップを使って全データを変換 (単純なDict生成のみ)
+def translate_keys_list(data_list):
+    """
+    (後方互換用ラッパー)
+    データのリストを受け取り、ヘッダー変換を適用して新しいリストを返す。
+    """
+    if not data_list:
+        return []
+
+    # 1. ヘッダー抽出 (最初の1件から)
+    sample_keys = list(data_list[0].keys())
+    
+    # 2. ヘッダーだけを変換 (最上端のみ処理)
+    _, key_mapping = translate_headers(sample_keys)
+
+    # 3. マッピングを使って全データを再構築 (高速)
     translated_list = []
     for item in data_list:
-        # マップにあるキーだけで新しい辞書を作る (存在しないキーは無視orそのまま)
-        # item.items() を使うと、sample_keysに含まれていなかった稀なキーが漏れる可能性があるため、
-        # 必要に応じて動的に追加するか、itemベースで回す。
-        
         new_item = {}
         for k, v in item.items():
-            # もしsampleに含まれていないキーが後から出てきた場合、そのまま使うか都度変換する
-            # ここでは高速化のため「既知のキーはマップから、未知はそのまま」とする
-            if k in key_mapping:
-                new_item[key_mapping[k]] = v
-            else:
-                new_item[k] = v
-                
+            # マップにあれば変換、なければそのまま
+            new_item[key_mapping.get(k, k)] = v
         translated_list.append(new_item)
         
     return translated_list
