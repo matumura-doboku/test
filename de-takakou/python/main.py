@@ -17,7 +17,76 @@ SYSTEM_ORIGINS = {
     "27": {"lat": 36.0, "lon": 136.0}, # 第6系 (大阪)
     "34": {"lat": 36.0, "lon": 133.5}, # 第6系相当 (広島は状況によるがここでは仮定)
     # ... 他の都道府県も必要に応じて追加
+    # ... 他の都道府県も必要に応じて追加
 }
+
+# 3. 項目名変換マップ（JSから移植）
+FIELD_LABELS = {
+    'title': '施設名称',
+    'hantei': '判定区分(数値)',
+    'lat': '緯度',
+    'lon': '経度',
+    'id': 'ID',
+    'meta_RSDB:syogen_ichi_ido': '緯度',
+    'meta_RSDB:syogen_ichi_keido': '経度',
+    'meta_RSDB:syogen_rosen_meisyou': '路線名',
+    'meta_RSDB:syogen_fukuin': '幅員',
+    'meta_RSDB:syogen_kanrisya_kubun': '管理者区分',
+    'meta_RSDB:syogen_kanrisya_jimusyo': '管理者事務所',
+    'meta_RSDB:syogen_kanrisya_meisyou': '管理者',
+    'meta_RSDB:syogen_kyouchou': '橋長',
+    'meta_RSDB:syogen_shisetsu_meisyou': '施設名',
+    'meta_RSDB:syogen_shisetsu_furigana': '施設名(カナ)',
+    'meta_RSDB:syogen_gyousei_kuiki_todoufuken_mei': '都道府県',
+    'meta_RSDB:syogen_gyousei_kuiki_todoufuken_code': '都道府県コード',
+    'meta_RSDB:syogen_gyousei_kuiki_shikuchouson_mei': '市区町村',
+    'meta_RSDB:syogen_gyousei_kuiki_shikuchouson_code': '市区町村コード',
+    'meta_RSDB:syogen_kasetsu_nendo': '架設年度',
+    'meta_RSDB:tenken_nendo': '点検年度',
+    'meta_RSDB:tenken_kiroku_hantei_kubun': '判定区分',
+    'meta_RSDB:tenken_syuzen_sochi_joukyou': '修繕措置状況',
+    'meta_RSDB:shisetsu_id': '施設ID',
+    'meta_RSDB:kanrisya_code': '管理者コード',
+    'meta_RSDB:shisetsu_kubun': '施設区分',
+    'meta_RSDB:koushin_nichiji': '更新日時',
+    'meta_DPF:title': '施設名',
+    'meta_DPF:route_name': '路線名',
+    'meta_DPF:prefecture_name': '都道府県',
+    'meta_DPF:municipality_name': '市区町村',
+    'meta_DPF:year': '年度',
+    'meta_DPF:downloadURLs': 'ダウンロードURL'
+}
+
+def translate_keys(data_list):
+    """
+    データのキーを日本語（または読みやすい形式）に変換する
+    """
+    translated_list = []
+    
+    for item in data_list:
+        new_item = {}
+        for key, value in item.items():
+            new_key = key
+            
+            # 1. 辞書にある場合
+            if key in FIELD_LABELS:
+                new_key = FIELD_LABELS[key]
+            # 2. ':' を含む場合（動的な処理）
+            elif ':' in key:
+                # 末尾の部分を使用
+                parts = key.split(':')
+                new_key = parts[-1]
+            
+            # キーの重複回避（既に存在する場合は連番などをつける簡易実装も考えられるが、
+            # 今回は上書きを許容するか、あるいは元の値が重要でないと仮定）
+            # ただし、lat/lonとmeta由来の緯度経度が衝突する可能性があるため
+            # 値が入っている方を優先したいが、dictの順序依存になる。
+            # ここではシンプルに上書きする。
+            new_item[new_key] = value
+            
+        translated_list.append(new_item)
+        
+    return translated_list
 
 def jgd2011_to_wgs84(x, y, pref_code):
     """
@@ -45,7 +114,7 @@ def jgd2011_to_wgs84(x, y, pref_code):
 # 2. データ取得メインロジック (ページネーション対応)
 # -----------------------------------------------------------------------------
 
-async def fetch_xroad_data(api_key, pref_code, data_category):
+async def fetch_xroad_data(api_key, pref_name, data_category):
     """
     Cloudflare Workers経由でデータをページネーションして取得し、座標変換を行う完全版関数
     """
@@ -58,7 +127,7 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
     # 実際には "https://my-worker.username.workers.dev" のようになります
     WORKER_ENDPOINT = "https://mlit-user-proxy.gyorui-sawara.workers.dev"
 
-    print(f"INFO: データ取得・加工プロセスを開始します (Pref: {pref_code})")
+    print(f"INFO: データ取得・加工プロセスを開始します (Pref: {pref_name})")
     
     # APIエンドポイントのパス (Worker経由)
     # GraphQLのルートエンドポイント
@@ -72,20 +141,8 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
             # デバッグ: APIキーの受信確認
             print(f"DEBUG: API Key received (len: {len(str(api_key)) if api_key else 0})")
 
-        # 都道府県コードから都道府県名への変換マップ
-        pref_map = {
-            "01": "北海道", "02": "青森県", "03": "岩手県", "04": "宮城県", "05": "秋田県",
-            "06": "山形県", "07": "福島県", "08": "茨城県", "09": "栃木県", "10": "群馬県",
-            "11": "埼玉県", "12": "千葉県", "13": "東京都", "14": "神奈川県", "15": "新潟県",
-            "16": "富山県", "17": "石川県", "18": "福井県", "19": "山梨県", "20": "長野県",
-            "21": "岐阜県", "22": "静岡県", "23": "愛知県", "24": "三重県", "25": "滋賀県",
-            "26": "京都府", "27": "大阪府", "28": "兵庫県", "29": "奈良県", "30": "和歌山県",
-            "31": "鳥取県", "32": "島根県", "33": "岡山県", "34": "広島県", "35": "山口県",
-            "36": "徳島県", "37": "香川県", "38": "愛媛県", "39": "高知県", "40": "福岡県",
-            "41": "佐賀県", "42": "長崎県", "43": "熊本県", "44": "大分県", "45": "宮崎県",
-            "46": "鹿児島県", "47": "沖縄県"
-        }
-        pref_name = pref_map.get(pref_code, "東京都") # デフォルト
+        # 都道府県名を使用したフィルタリング
+        # pref_name は引数から直接利用
 
         while True:
             if not is_mock:
@@ -194,7 +251,7 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
             else:
                 # モックデータの生成
                 await asyncio.sleep(0.5) 
-                batch_data = generate_mock_batch(offset, limit, pref_code)
+                batch_data = generate_mock_batch(offset, limit, pref_name)
                 if batch_data is None: # 終了条件
                     break
                 
@@ -203,22 +260,26 @@ async def fetch_xroad_data(api_key, pref_code, data_category):
                 offset += count
 
         print(f"SUCCESS: 合計 {len(total_data)} 件のデータを準備しました。")
-        return total_data
+        
+        # キーの翻訳を実行
+        translated_data = translate_keys(total_data)
+        
+        return translated_data
 
     except Exception as e:
         print(f"ERROR: 重大なエラーが発生しました: {str(e)}")
         return []
 
-def generate_mock_batch(offset, limit, pref_code):
+def generate_mock_batch(offset, limit, pref_name):
     """ページネーションの挙動をテストするためのモックデータ生成"""
     # 3ページ分(300件)だけ返すシミュレーション
     if offset >= 5000:
         return None
     
     mock_batch = []
-    # 広島(34)ならそれっぽい座標、その他なら適当に
-    base_x = -15000 if pref_code == "34" else 0
-    base_y = -35000 if pref_code == "34" else 0
+    # 広島ならそれっぽい座標、その他なら適当に
+    base_x = -15000 if pref_name == "広島県" else 0
+    base_y = -35000 if pref_name == "広島県" else 0
 
     for i in range(limit):
         current_id = offset + i
@@ -227,7 +288,7 @@ def generate_mock_batch(offset, limit, pref_code):
             "name": f"道路施設データ_{current_id}",
             "x": base_x + (i * 100), # 擬似的な平面直角座標
             "y": base_y + (i * 100),
-            "pref": pref_code
+            "pref": pref_name
         })
     return mock_batch
     
