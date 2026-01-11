@@ -11,84 +11,19 @@ import asyncio
 # ここでは「広島県(第6系)」や「東京都(第9系)」など、指定された系の原点を使用する必要があります。
 
 # 平面直角座標系の系番号と原点(ラジアン)のマッピング (抜粋)
+# 平面直角座標系の系番号と原点(ラジアン)のマッピング (抜粋)
+# 都道府県コードから名称に変更
 SYSTEM_ORIGINS = {
-    "01": {"lat": 33.0, "lon": 129.5}, # 第1系 (長崎・鹿児島等)
-    "13": {"lat": 36.0, "lon": 139.8333}, # 第9系 (東京)
-    "27": {"lat": 36.0, "lon": 136.0}, # 第6系 (大阪)
-    "34": {"lat": 36.0, "lon": 133.5}, # 第6系相当 (広島は状況によるがここでは仮定)
-    # ... 他の都道府県も必要に応じて追加
-    # ... 他の都道府県も必要に応じて追加
+    "長崎県": {"lat": 33.0, "lon": 129.5}, # 第1系
+    "鹿児島県": {"lat": 33.0, "lon": 129.5}, # 第1系
+    "東京都": {"lat": 36.0, "lon": 139.8333}, # 第9系
+    "大阪府": {"lat": 36.0, "lon": 136.0}, # 第6系
+    "広島県": {"lat": 36.0, "lon": 133.5}, # 第6系相当
+    # デフォルト用
+    "default": {"lat": 36.0, "lon": 133.5} 
 }
 
-# 3. 項目名変換マップ（JSから移植）
-FIELD_LABELS = {
-    'title': '施設名称',
-    'hantei': '判定区分(数値)',
-    'lat': '緯度',
-    'lon': '経度',
-    'id': 'ID',
-    'meta_RSDB:syogen_ichi_ido': '緯度',
-    'meta_RSDB:syogen_ichi_keido': '経度',
-    'meta_RSDB:syogen_rosen_meisyou': '路線名',
-    'meta_RSDB:syogen_fukuin': '幅員',
-    'meta_RSDB:syogen_kanrisya_kubun': '管理者区分',
-    'meta_RSDB:syogen_kanrisya_jimusyo': '管理者事務所',
-    'meta_RSDB:syogen_kanrisya_meisyou': '管理者',
-    'meta_RSDB:syogen_kyouchou': '橋長',
-    'meta_RSDB:syogen_shisetsu_meisyou': '施設名',
-    'meta_RSDB:syogen_shisetsu_furigana': '施設名(カナ)',
-    'meta_RSDB:syogen_gyousei_kuiki_todoufuken_mei': '都道府県',
-    'meta_RSDB:syogen_gyousei_kuiki_todoufuken_code': '都道府県コード',
-    'meta_RSDB:syogen_gyousei_kuiki_shikuchouson_mei': '市区町村',
-    'meta_RSDB:syogen_gyousei_kuiki_shikuchouson_code': '市区町村コード',
-    'meta_RSDB:syogen_kasetsu_nendo': '架設年度',
-    'meta_RSDB:tenken_nendo': '点検年度',
-    'meta_RSDB:tenken_kiroku_hantei_kubun': '判定区分',
-    'meta_RSDB:tenken_syuzen_sochi_joukyou': '修繕措置状況',
-    'meta_RSDB:shisetsu_id': '施設ID',
-    'meta_RSDB:kanrisya_code': '管理者コード',
-    'meta_RSDB:shisetsu_kubun': '施設区分',
-    'meta_RSDB:koushin_nichiji': '更新日時',
-    'meta_DPF:title': '施設名',
-    'meta_DPF:route_name': '路線名',
-    'meta_DPF:prefecture_name': '都道府県',
-    'meta_DPF:municipality_name': '市区町村',
-    'meta_DPF:year': '年度',
-    'meta_DPF:downloadURLs': 'ダウンロードURL'
-}
-
-def translate_keys(data_list):
-    """
-    データのキーを日本語（または読みやすい形式）に変換する
-    """
-    translated_list = []
-    
-    for item in data_list:
-        new_item = {}
-        for key, value in item.items():
-            new_key = key
-            
-            # 1. 辞書にある場合
-            if key in FIELD_LABELS:
-                new_key = FIELD_LABELS[key]
-            # 2. ':' を含む場合（動的な処理）
-            elif ':' in key:
-                # 末尾の部分を使用
-                parts = key.split(':')
-                new_key = parts[-1]
-            
-            # キーの重複回避（既に存在する場合は連番などをつける簡易実装も考えられるが、
-            # 今回は上書きを許容するか、あるいは元の値が重要でないと仮定）
-            # ただし、lat/lonとmeta由来の緯度経度が衝突する可能性があるため
-            # 値が入っている方を優先したいが、dictの順序依存になる。
-            # ここではシンプルに上書きする。
-            new_item[new_key] = value
-            
-        translated_list.append(new_item)
-        
-    return translated_list
-
-def jgd2011_to_wgs84(x, y, pref_code):
+def jgd2011_to_wgs84(x, y, pref_name):
     """
     平面直角座標 (x, y) を 緯度経度 (lat, lon) に変換する簡易関数
     ※精度は本格的なライブラリに劣りますが、可視化用途には十分です
@@ -96,7 +31,7 @@ def jgd2011_to_wgs84(x, y, pref_code):
     # 簡易計算のため、実際には緯度経度へのオフセットとして近似計算します
     # 注意: x軸が北向き、y軸が東向き
     
-    origin = SYSTEM_ORIGINS.get(pref_code, {"lat": 36.0, "lon": 133.5}) # デフォルト
+    origin = SYSTEM_ORIGINS.get(pref_name, SYSTEM_ORIGINS["default"]) # デフォルト
     origin_lat = origin["lat"]
     origin_lon = origin["lon"]
 
@@ -153,8 +88,8 @@ async def fetch_xroad_data(api_key, pref_name, data_category):
                   search(
                     term: "橋梁"
                     phraseMatch: true
-                    first: {limit}
-                    offset: {offset}
+                    first: {offset}
+                    size: {limit}
                     attributeFilter: {{
                       attributeName: "DPF:prefecture_name",
                       is: "{pref_name}"
@@ -260,11 +195,7 @@ async def fetch_xroad_data(api_key, pref_name, data_category):
                 offset += count
 
         print(f"SUCCESS: 合計 {len(total_data)} 件のデータを準備しました。")
-        
-        # キーの翻訳を実行
-        translated_data = translate_keys(total_data)
-        
-        return translated_data
+        return total_data
 
     except Exception as e:
         print(f"ERROR: 重大なエラーが発生しました: {str(e)}")
