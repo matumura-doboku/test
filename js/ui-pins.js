@@ -8,7 +8,7 @@ import {
     pinDataDate,
     pinDataStatus,
     pinLoadBtn,
-    pinCsvInput, // 追加
+    // pinCsvInput, // dom.jsのキャッシュ問題回避のため直接取得に変更
     pinFilterAlert,
     pinFilterFormula,
     pinFilterApply,
@@ -35,8 +35,9 @@ export function initPinVisualization() {
         pinLoadBtn.addEventListener('click', loadPinDataFromStorage);
     }
 
-    if (pinCsvInput) {
-        pinCsvInput.addEventListener('change', handleCsvUpload);
+    const pinCsvInputEl = document.getElementById('pin-csv-input');
+    if (pinCsvInputEl) {
+        pinCsvInputEl.addEventListener('change', handleCsvUpload);
     }
 
     if (pinFilterAlert) {
