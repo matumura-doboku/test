@@ -30,7 +30,7 @@ function getFieldLabel(key) {
 export function initPinVisualization() {
     if (!vizModeSelect) return;
 
-    registerLabels(FIELD_LABELS);
+    // registerLabels(FIELD_LABELS); // 削除済みのためコメントアウトまたは空呼び出し
 
     if (pinLoadBtn) {
         pinLoadBtn.addEventListener('click', loadPinDataFromStorage);
