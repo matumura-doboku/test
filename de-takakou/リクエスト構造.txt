@@ -1,0 +1,193 @@
+{
+  "data": {
+    "__type": {
+      "name": "DataClass",
+      "fields": [
+        {
+          "name": "id",
+          "description": null,
+          "type": {
+            "name": "String",
+            "kind": "SCALAR"
+          }
+        },
+        {
+          "name": "title",
+          "description": null,
+          "type": {
+            "name": "String",
+            "kind": "SCALAR"
+          }
+        },
+        {
+          "name": "lat",
+          "description": null,
+          "type": {
+            "name": "Float",
+            "kind": "SCALAR"
+          }
+        },
+        {
+          "name": "lon",
+          "description": null,
+          "type": {
+            "name": "Float",
+            "kind": "SCALAR"
+          }
+        },
+        {
+          "name": "year",
+          "description": null,
+          "type": {
+            "name": "String",
+            "kind": "SCALAR"
+          }
+        },
+        {
+          "name": "theme",
+          "description": null,
+          "type": {
+            "name": null,
+            "kind": "LIST"
+          }
+        },
+        {
+          "name": "favorite",
+          "description": null,
+          "type": {
+            "name": "Boolean",
+            "kind": "SCALAR"
+          }
+        },
+        {
+          "name": "shape",
+          "description": null,
+          "type": {
+            "name": "JSONObject",
+            "kind": "SCALAR"
+          }
+        },
+        {
+          "name": "metadata",
+          "description": null,
+          "type": {
+            "name": "JSONObject",
+            "kind": "SCALAR"
+          }
+        },
+        {
+          "name": "tileset",
+          "description": null,
+          "type": {
+            "name": null,
+            "kind": "LIST"
+          }
+        },
+        {
+          "name": "highlight",
+          "description": null,
+          "type": {
+            "name": "JSONObject",
+            "kind": "SCALAR"
+          }
+        },
+        {
+          "name": "xyztiles",
+          "description": null,
+          "type": {
+            "name": null,
+            "kind": "LIST"
+          }
+        },
+        {
+          "name": "files",
+          "description": null,
+          "type": {
+            "name": null,
+            "kind": "LIST"
+          }
+        },
+        {
+          "name": "liveStreams",
+          "description": null,
+          "type": {
+            "name": null,
+            "kind": "LIST"
+          }
+        },
+        {
+          "name": "vectorTiles",
+          "description": null,
+          "type": {
+            "name": null,
+            "kind": "LIST"
+          }
+        },
+        {
+          "name": "dataset_id",
+          "description": null,
+          "type": {
+            "name": "String",
+            "kind": "SCALAR"
+          }
+        },
+        {
+          "name": "catalog_id",
+          "description": null,
+          "type": {
+            "name": "String",
+            "kind": "SCALAR"
+          }
+        },
+        {
+          "name": "dataset",
+          "description": null,
+          "type": {
+            "name": "DatasetInfoClass",
+            "kind": "OBJECT"
+          }
+        },
+        {
+          "name": "geoBoundingBox",
+          "description": null,
+          "type": {
+            "name": "GeoBoundingBoxClass",
+            "kind": "OBJECT"
+          }
+        },
+        {
+          "name": "relatedData",
+          "description": null,
+          "type": {
+            "name": null,
+            "kind": "LIST"
+          }
+        },
+        {
+          "name": "meshes",
+          "description": null,
+          "type": {
+            "name": null,
+            "kind": "LIST"
+          }
+        },
+        {
+          "name": "displayOptions",
+          "description": null,
+          "type": {
+            "name": "JSONObject",
+            "kind": "SCALAR"
+          }
+        },
+        {
+          "name": "hasThumbnail",
+          "description": null,
+          "type": {
+            "name": "Boolean",
+            "kind": "SCALAR"
+          }
+        }
+      ]
+    }
+  }
+}

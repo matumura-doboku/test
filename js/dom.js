@@ -99,6 +99,7 @@ export const pinDataCount = document.getElementById('pin-data-count');
 export const pinDataDate = document.getElementById('pin-data-date');
 export const pinDataStatus = document.getElementById('pin-data-status');
 export const pinLoadBtn = document.getElementById('pin-load-data');
+export const pinCsvInput = document.getElementById('pin-csv-input'); // 追加
 export const pinFilterAlert = document.getElementById('pin-filter-alert');
 export const pinFilterFormula = document.getElementById('pin-filter-formula');
 export const pinFilterApply = document.getElementById('pin-filter-apply');
