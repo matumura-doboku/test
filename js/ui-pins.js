@@ -8,6 +8,7 @@ import {
     pinDataDate,
     pinDataStatus,
     pinLoadBtn,
+    pinCsvInput, // 追加
     pinFilterAlert,
     pinFilterFormula,
     pinFilterApply,
@@ -17,59 +18,25 @@ import {
     pinFieldList
 } from './dom.js';
 
-let selectedFields = ['title', 'hantei']; // デフォルト表示項目
+let selectedFields = ['施設名称', '判定区分']; // デフォルト表示項目（日本語ラベル）
 
-const FIELD_LABELS = {
-    'title': '施設名称',
-    'hantei': '判定区分(数値)',
-    'lat': '緯度',
-    'lon': '経度',
-    'id': 'ID',
-    'meta_RSDB:syogen_ichi_ido': '緯度',
-    'meta_RSDB:syogen_ichi_keido': '経度',
-    'meta_RSDB:syogen_rosen_meisyou': '路線名',
-    'meta_RSDB:syogen_fukuin': '幅員',
-    'meta_RSDB:syogen_kanrisya_kubun': '管理者区分',
-    'meta_RSDB:syogen_kanrisya_jimusyo': '管理者事務所',
-    'meta_RSDB:syogen_kanrisya_meisyou': '管理者',
-    'meta_RSDB:syogen_kyouchou': '橋長',
-    'meta_RSDB:syogen_shisetsu_meisyou': '施設名',
-    'meta_RSDB:syogen_shisetsu_furigana': '施設名(カナ)',
-    'meta_RSDB:syogen_gyousei_kuiki_todoufuken_mei': '都道府県',
-    'meta_RSDB:syogen_gyousei_kuiki_todoufuken_code': '都道府県コード',
-    'meta_RSDB:syogen_gyousei_kuiki_shikuchouson_mei': '市区町村',
-    'meta_RSDB:syogen_gyousei_kuiki_shikuchouson_code': '市区町村コード',
-    'meta_RSDB:syogen_kasetsu_nendo': '架設年度',
-    'meta_RSDB:tenken_nendo': '点検年度',
-    'meta_RSDB:tenken_kiroku_hantei_kubun': '判定区分',
-    'meta_RSDB:tenken_syuzen_sochi_joukyou': '修繕措置状況',
-    'meta_RSDB:shisetsu_id': '施設ID',
-    'meta_RSDB:kanrisya_code': '管理者コード',
-    'meta_RSDB:shisetsu_kubun': '施設区分',
-    'meta_RSDB:koushin_nichiji': '更新日時',
-
-    // DPF fields (optional, if needed to match user request better I can comment these out or keep them)
-    'meta_DPF:title': '施設名',
-    'meta_DPF:route_name': '路線名',
-    'meta_DPF:prefecture_name': '都道府県',
-    'meta_DPF:municipality_name': '市区町村',
-    'meta_DPF:year': '年度',
-    'meta_DPF:downloadURLs': 'ダウンロードURL'
-};
-
+// フィールド名をそのまま返す（main.pyで既に日本語に変換済み）
 function getFieldLabel(key) {
-    if (FIELD_LABELS[key]) return FIELD_LABELS[key];
-    const parts = key.split(':');
-    return parts.length > 1 ? parts[parts.length - 1] : key;
+    return key;
 }
 
 export function initPinVisualization() {
     if (!vizModeSelect) return;
 
-    registerLabels(FIELD_LABELS);
+    // main.pyで日本語変換済みのため、ラベル登録は空で初期化
+    registerLabels({});
 
     if (pinLoadBtn) {
-        pinLoadBtn.addEventListener('click', loadPinData);
+        pinLoadBtn.addEventListener('click', loadPinDataFromStorage);
+    }
+
+    if (pinCsvInput) {
+        pinCsvInput.addEventListener('change', handleCsvUpload);
     }
 
     if (pinFilterAlert) {
@@ -92,7 +59,7 @@ export function initPinVisualization() {
         pinFieldAdd.addEventListener('click', addDisplayField);
     }
 
-    loadPinData();
+    loadPinDataFromStorage();
     renderFieldList();
 }
 
@@ -129,7 +96,45 @@ function addDisplayField() {
     pinFieldSelect.value = '';
 }
 
-function loadPinData() {
+function handleCsvUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    pinDataStatus.textContent = 'CSV読み込み中...';
+
+    Papa.parse(file, {
+        header: true,
+        dynamicTyping: true,
+        skipEmptyLines: true,
+        complete: function (results) {
+            if (results.data && results.data.length > 0) {
+                // 必須フィールドチェック (lat, lon または 緯度, 経度)
+                const sample = results.data[0];
+                console.log("CSV Loaded:", results.data.length, "rows");
+
+                // データを整形 (lat/lonがなければ緯度/経度カラムを探すなどの正規化もここで行うと良い)
+                // 今回はそのまま渡す
+                processPinData(results.data, new Date().toISOString());
+
+                // 成功したらLocalStorageにも保存しておく（オプション）
+                try {
+                    localStorage.setItem('daredemoGIS_imported_data', JSON.stringify(results.data));
+                    localStorage.setItem('daredemoGIS_import_timestamp', new Date().toISOString());
+                } catch (err) {
+                    console.warn('Storage quota exceeded, skipping local save', err);
+                }
+            } else {
+                pinDataStatus.textContent = 'CSVデータが空です。';
+            }
+        },
+        error: function (err) {
+            console.error(err);
+            pinDataStatus.textContent = 'CSV読み込みエラー: ' + err.message;
+        }
+    });
+}
+
+function loadPinDataFromStorage() {
     const jsonStr = localStorage.getItem('daredemoGIS_imported_data');
     const timestamp = localStorage.getItem('daredemoGIS_import_timestamp');
 
@@ -140,18 +145,24 @@ function loadPinData() {
 
     try {
         const data = JSON.parse(jsonStr);
-        pinDataCount.textContent = `${data.length} 件`;
-        pinDataDate.textContent = timestamp ? new Date(timestamp).toLocaleString() : '不明';
-        pinDataStatus.textContent = 'データ読み込み完了';
-
-        // ドロップダウンの更新
-        updateFieldSelectOptions(data[0]);
-
-        addPinLayer(data);
+        processPinData(data, timestamp);
     } catch (e) {
         console.error(e);
-        pinDataStatus.textContent = 'データの読み込みに失敗しました。';
+        pinDataStatus.textContent = 'Storageデータの読み込みに失敗しました。';
     }
+}
+
+function processPinData(data, timestamp) {
+    if (!data || data.length === 0) return;
+
+    pinDataCount.textContent = `${data.length} 件`;
+    pinDataDate.textContent = timestamp ? new Date(timestamp).toLocaleString() : '不明';
+    pinDataStatus.textContent = 'データ読み込み完了';
+
+    // ドロップダウンの更新
+    updateFieldSelectOptions(data[0]);
+
+    addPinLayer(data);
 }
 
 function updateFieldSelectOptions(sampleData) {
@@ -159,11 +170,12 @@ function updateFieldSelectOptions(sampleData) {
     const currentVal = pinFieldSelect.value;
     pinFieldSelect.innerHTML = '<option value="">項目を選択...</option>';
 
-    // meta_RSDBで始まるキー または title, id, lat, lon など許可リストにあるもの
-    const ALLOWED_FIELDS = ['title', 'hantei', 'id', 'lat', 'lon'];
+    // 日本語ラベル名でフィルタリング（main.pyで変換済み）
+    // 除外するフィールド（内部用・技術用）
+    const EXCLUDED_FIELDS = ['metadata'];
 
     const keys = Object.keys(sampleData).filter(key => {
-        return key.startsWith('meta_RSDB') || ALLOWED_FIELDS.includes(key);
+        return !EXCLUDED_FIELDS.includes(key);
     });
 
     // Sort keys: put allowed fields first, then alphabetical or standard order
@@ -187,15 +199,16 @@ function updateFieldSelectOptions(sampleData) {
 function addPinLayer(data) {
     if (!state.map || !state.mapReady) return;
 
-    const features = data.filter(d => d.lat && d.lon).map(d => ({
+    // 緯度・経度フィールドは日本語ラベル名で参照（main.pyで変換済み）
+    const features = data.filter(d => d['緯度'] && d['経度']).map(d => ({
         type: 'Feature',
         geometry: {
             type: 'Point',
-            coordinates: [Number(d.lon), Number(d.lat)]
+            coordinates: [Number(d['経度']), Number(d['緯度'])]
         },
         properties: {
             ...d,
-            hantei: Number(d['meta_RSDB:tenken_kiroku_hantei_kubun'] || 0)
+            hantei: Number(d['判定区分(数値)'] || 0)
         }
     }));
 
