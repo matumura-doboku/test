@@ -18,50 +18,13 @@ import {
     pinFieldList
 } from './dom.js';
 
-let selectedFields = ['title', 'hantei']; // デフォルト表示項目
-
-const FIELD_LABELS = {
-    'title': '施設名称',
-    'hantei': '判定区分(数値)',
-    'lat': '緯度',
-    'lon': '経度',
-    'id': 'ID',
-    'meta_RSDB:syogen_ichi_ido': '緯度',
-    'meta_RSDB:syogen_ichi_keido': '経度',
-    'meta_RSDB:syogen_rosen_meisyou': '路線名',
-    'meta_RSDB:syogen_fukuin': '幅員',
-    'meta_RSDB:syogen_kanrisya_kubun': '管理者区分',
-    'meta_RSDB:syogen_kanrisya_jimusyo': '管理者事務所',
-    'meta_RSDB:syogen_kanrisya_meisyou': '管理者',
-    'meta_RSDB:syogen_kyouchou': '橋長',
-    'meta_RSDB:syogen_shisetsu_meisyou': '施設名',
-    'meta_RSDB:syogen_shisetsu_furigana': '施設名(カナ)',
-    'meta_RSDB:syogen_gyousei_kuiki_todoufuken_mei': '都道府県',
-    'meta_RSDB:syogen_gyousei_kuiki_todoufuken_code': '都道府県コード',
-    'meta_RSDB:syogen_gyousei_kuiki_shikuchouson_mei': '市区町村',
-    'meta_RSDB:syogen_gyousei_kuiki_shikuchouson_code': '市区町村コード',
-    'meta_RSDB:syogen_kasetsu_nendo': '架設年度',
-    'meta_RSDB:tenken_nendo': '点検年度',
-    'meta_RSDB:tenken_kiroku_hantei_kubun': '判定区分',
-    'meta_RSDB:tenken_syuzen_sochi_joukyou': '修繕措置状況',
-    'meta_RSDB:shisetsu_id': '施設ID',
-    'meta_RSDB:kanrisya_code': '管理者コード',
-    'meta_RSDB:shisetsu_kubun': '施設区分',
-    'meta_RSDB:koushin_nichiji': '更新日時',
-
-    // DPF fields (optional, if needed to match user request better I can comment these out or keep them)
-    'meta_DPF:title': '施設名',
-    'meta_DPF:route_name': '路線名',
-    'meta_DPF:prefecture_name': '都道府県',
-    'meta_DPF:municipality_name': '市区町村',
-    'meta_DPF:year': '年度',
-    'meta_DPF:downloadURLs': 'ダウンロードURL'
-};
+let selectedFields = ['施設名称', '判定区分(数値)']; // デフォルト表示項目
+// 柔軟なカラム特定のためのロジックは削除し、Pythonから送られてきたキーを直接使用する
 
 function getFieldLabel(key) {
-    if (FIELD_LABELS[key]) return FIELD_LABELS[key];
-    const parts = key.split(':');
-    return parts.length > 1 ? parts[parts.length - 1] : key;
+    // サーバーサイド(Python)ですでに翻訳されているため、キーをそのまま返す
+    // 必要であればここで追加の整形を行うことも可能
+    return key;
 }
 
 export function initPinVisualization() {
@@ -208,26 +171,13 @@ function updateFieldSelectOptions(sampleData) {
     const currentVal = pinFieldSelect.value;
     pinFieldSelect.innerHTML = '<option value="">項目を選択...</option>';
 
-    // meta_RSDBで始まるキー または title, id, lat, lon など許可リストにあるもの
-    const ALLOWED_FIELDS = ['title', 'hantei', 'id', 'lat', 'lon'];
-
-    const keys = Object.keys(sampleData).filter(key => {
-        return key.startsWith('meta_RSDB') || ALLOWED_FIELDS.includes(key);
-    });
-
-    // Sort keys: put allowed fields first, then alphabetical or standard order
-    keys.sort((a, b) => {
-        const aIsAllowed = ALLOWED_FIELDS.includes(a);
-        const bIsAllowed = ALLOWED_FIELDS.includes(b);
-        if (aIsAllowed && !bIsAllowed) return -1;
-        if (!aIsAllowed && bIsAllowed) return 1;
-        return a.localeCompare(b);
-    });
+    // Pythonから送られてきた全てのキーをドロップダウンの候補とする
+    const keys = Object.keys(sampleData);
 
     keys.forEach(key => {
         const option = document.createElement('option');
         option.value = key;
-        option.textContent = getFieldLabel(key);
+        option.textContent = key; // getFieldLabelを通さず、キーそのものを表示（Python側で翻訳済みのため）
         pinFieldSelect.appendChild(option);
     });
     pinFieldSelect.value = currentVal;
@@ -236,15 +186,19 @@ function updateFieldSelectOptions(sampleData) {
 function addPinLayer(data) {
     if (!state.map || !state.mapReady) return;
 
-    const features = data.filter(d => d.lat && d.lon).map(d => ({
+    // Python側で「緯度」「経度」というキーに翻訳されていることを前提とする
+    // もしPython側の翻訳が変われば、ここも自動的に影響を受ける（データ駆動）
+    const features = data.filter(d => d['緯度'] && d['経度']).map(d => ({
         type: 'Feature',
         geometry: {
             type: 'Point',
-            coordinates: [Number(d.lon), Number(d.lat)]
+            coordinates: [Number(d['経度']), Number(d['緯度'])]
         },
         properties: {
             ...d,
-            hantei: Number(d['meta_RSDB:tenken_kiroku_hantei_kubun'] || 0)
+            // 色分け用の数値データ。Python側で「判定区分(数値)」に変換されている箇所を参照
+            // キーが存在しない場合はデフォルト0
+            hantei: Number(d['判定区分(数値)'] || 0)
         }
     }));
 
@@ -310,6 +264,8 @@ function updatePinFilter() {
 
     // チェックボックスの条件
     if (showOnlyAlert) {
+        // 色分けロジック側でのプロパティ名確認が必要。
+        // 上記addPinLayerで properties.hantei に数値をセットしているので、フィルタは 'hantei' のままで良い
         conditions.push(['in', ['get', 'hantei'], ['literal', [3, 4]]]);
     }
 
