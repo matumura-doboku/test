@@ -179,12 +179,8 @@ function updateFieldSelectOptions(sampleData) {
         return !EXCLUDED_FIELDS.includes(key);
     });
 
-    // Sort keys: put allowed fields first, then alphabetical or standard order
+    // Sort keys: alphabetical order
     keys.sort((a, b) => {
-        const aIsAllowed = ALLOWED_FIELDS.includes(a);
-        const bIsAllowed = ALLOWED_FIELDS.includes(b);
-        if (aIsAllowed && !bIsAllowed) return -1;
-        if (!aIsAllowed && bIsAllowed) return 1;
         return a.localeCompare(b);
     });
 
