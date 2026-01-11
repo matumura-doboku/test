@@ -153,8 +153,8 @@ async def fetch_xroad_data(api_key, pref_name, data_category):
                   search(
                     term: "橋梁"
                     phraseMatch: true
-                    first: {offset}
-                    size: {limit}
+                    first: {limit}
+                    offset: {offset}
                     attributeFilter: {{
                       attributeName: "DPF:prefecture_name",
                       is: "{pref_name}"
