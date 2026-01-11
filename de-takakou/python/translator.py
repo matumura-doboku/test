@@ -49,19 +49,30 @@ def translate_keys_list(data_list):
     データのキーを日本語（または読みやすい形式）に変換する
     リスト全体を処理して新しいリストを返す
     """
-    translated_list = []
+    if not data_list:
+        return []
+
+    # 1. すべてのデータに含まれる「キー（カラム名）」のユニークなリストを取得
+    # データ構造が均一なら data_list[0].keys() だけで十分だが、念のため全走査して和集合をとるか、
+    # 速度優先なら「最初の100件」くらいから全カラムを拾うアプローチが良い。
+    # ここではシンプルかつそれなりに高速な方法として、データの最初の1件を代表とする
+    # (APIデータは通常スキーマが決まっているため)
+    sample_keys = data_list[0].keys()
     
-    for item in data_list:
-        new_item = {}
-        for key, value in item.items():
-            new_key = key
-            
-            # 1. 辞書にある場合
-            if key in FIELD_LABELS:
-                new_key = FIELD_LABELS[key]
-            else:
-                # 1.5 揺らぎ吸収 (Retry with normalized key)
-                # 一般的なヘボン式などから、この辞書で採用されている訓令式ミックスへのマッピングを試行
+    # 2. キーごとの変換マップを作成 (ここだけ重い処理を行う)
+    # カラム数分(数十〜数百)しかループしないので一瞬で終わる
+    key_mapping = {}
+    for key in sample_keys:
+        new_key = key
+        
+        # (A) 辞書完全一致
+        if key in FIELD_LABELS:
+            new_key = FIELD_LABELS[key]
+        else:
+            # (B) 揺らぎ吸収 (正規化)
+            normalized_attempt = key
+            # パフォーマンスのため、明らかに対象になりそうな場合のみ試行
+            if any(x in key for x in ['shogen', 'kanrisha', 'meisho', 'jimusho', 'shuzen', 'kyocho', 'jokyo']):
                 normalized_attempt = key.replace('shogen', 'syogen') \
                                         .replace('kanrisha', 'kanrisya') \
                                         .replace('meisho', 'meisyou') \
@@ -71,28 +82,34 @@ def translate_keys_list(data_list):
                                         .replace('kyocho', 'kyouchou') \
                                         .replace('jokyo', 'joukyou')
 
-                if normalized_attempt in FIELD_LABELS:
-                    new_key = FIELD_LABELS[normalized_attempt]
-
-            # 2. ':' を含む場合（動的な処理: fallback）
-            if new_key == key and ':' in key:
-                parts = key.split(':')
-                new_key = parts[-1]
-            # 3. '_' を含む場合の動的処理（main.pyのflattenに対応）
-            elif '_' in key and 'meta' in key:
-                 # meta_RSDB_foo -> foo のように短縮を試みる
-                 # 辞書にヒットしなかった場合の最後の手段
-                 parts = key.split('_')
-                 # 最後の要素を使うのが一番安全か？ (例: syogen_ichi_ido -> ido だと意味不明になるかも)
-                 # しかし全部日本語化辞書に含まれているはずなので、ここに来るのは未知の項目。
-                 # その場合は元のキーのままでも良いが、多少見やすくするなら:
-                 if len(parts) > 2:
-                     # meta_RSDB_foo... -> foo...
-                     # 簡易的に "meta_RSDB_" を取り除く
+            if normalized_attempt in FIELD_LABELS:
+                new_key = FIELD_LABELS[normalized_attempt]
+            
+            # (C) フォールバック整形
+            elif key == new_key:
+                if ':' in key:
+                    new_key = key.split(':')[-1]
+                elif '_' in key and ('meta_RSDB' in key or 'meta_DPF' in key):
                      new_key = key.replace('meta_RSDB_', '').replace('meta_DPF_', '')
-            
-            new_item[new_key] = value
-            
+        
+        key_mapping[key] = new_key
+
+    # 3. 作成したマップを使って全データを変換 (単純なDict生成のみ)
+    translated_list = []
+    for item in data_list:
+        # マップにあるキーだけで新しい辞書を作る (存在しないキーは無視orそのまま)
+        # item.items() を使うと、sample_keysに含まれていなかった稀なキーが漏れる可能性があるため、
+        # 必要に応じて動的に追加するか、itemベースで回す。
+        
+        new_item = {}
+        for k, v in item.items():
+            # もしsampleに含まれていないキーが後から出てきた場合、そのまま使うか都度変換する
+            # ここでは高速化のため「既知のキーはマップから、未知はそのまま」とする
+            if k in key_mapping:
+                new_item[key_mapping[k]] = v
+            else:
+                new_item[k] = v
+                
         translated_list.append(new_item)
         
     return translated_list
