@@ -184,10 +184,17 @@
                 const code = await response.text();
                 await pyodide.runPythonAsync(code);
 
-                // translator.pyを読み込む
+                // translator.pyを読み込んで、Pyodideの仮想ファイルシステムに保存する
+                // これにより、後で 'from translator import ...' が可能になる
                 const transResponse = await fetch('python/translator.py');
                 const transCode = await transResponse.text();
-                await pyodide.runPythonAsync(transCode);
+                pyodide.FS.writeFile('/home/pyodide/translator.py', transCode, { encoding: "utf8" });
+                // 念のためパスを通してimportできるか確認（エラーが出なければOK）
+                await pyodide.runPythonAsync(`
+                    import sys
+                    sys.path.append('/home/pyodide')
+                    import translator
+                `);
 
                 appendLog('システムの準備が整いました。', 'success');
                 runBtn.disabled = false;
