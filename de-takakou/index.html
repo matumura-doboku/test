@@ -180,9 +180,20 @@
                     stderr: (text) => appendLog(text, 'error')
                 });
 
+                // 依存ファイルの読み込みと書き込み
+                const files = ['mlit_fetcher.py', 'bridge.py'];
+                for (const file of files) {
+                    const res = await fetch(`python/${file}`);
+                    const content = await res.text();
+                    pyodide.FS.writeFile(file, content);
+                    appendLog(`${file} を読み込みました`, 'info');
+                }
+
                 // main.pyを読み込む
                 const response = await fetch('python/main.py');
                 const code = await response.text();
+                // インポートパスを通すためにカレントディレクトリを確認（通常は/home/pyodideまたは/）
+                // 必要であれば sys.path を調整するが、FS.writeFileした先がカレントならimport可能
                 await pyodide.runPythonAsync(code);
 
                 appendLog('システムの準備が整いました。', 'success');
