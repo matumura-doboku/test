@@ -114,8 +114,14 @@ function handleCsvUpload(e) {
                 console.log("CSV Loaded:", results.data.length, "rows");
 
                 // データを整形 (lat/lonがなければ緯度/経度カラムを探すなどの正規化もここで行うと良い)
-                // 今回はそのまま渡す
-                processPinData(results.data, new Date().toISOString());
+                // window.Translatorを使ってCSVデータのキーを翻訳する
+                let processedData = results.data;
+                if (window.Translator) {
+                    console.log("Translating CSV data...");
+                    processedData = window.Translator.translateDataList(results.data);
+                }
+
+                processPinData(processedData, new Date().toISOString());
 
                 // 成功したらLocalStorageにも保存しておく（オプション）
                 try {
