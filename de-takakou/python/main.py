@@ -195,6 +195,17 @@ async def fetch_xroad_data(api_key, pref_name, data_category):
                 offset += count
 
         print(f"SUCCESS: 合計 {len(total_data)} 件のデータを準備しました。")
+        
+        # 翻訳処理の適用
+        try:
+            import translator
+            print(f"INFO: データのキーを日本語変換中...")
+            total_data = translator.translate_keys_list(total_data)
+        except ImportError:
+            print("WARNING: translator.py が見つからないため、キー変換をスキップします。")
+        except Exception as e:
+            print(f"WARNING: キー変換中にエラーが発生しました: {e}")
+
         return total_data
 
     except Exception as e:
