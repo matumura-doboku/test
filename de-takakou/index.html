@@ -223,8 +223,7 @@
                 // Python関数の実行
                 const result = await pyodide.runPythonAsync(`
                     import json
-                    # dataset_id は現状固定で "rsdb_bridge" (橋梁) を指定
-                    data = await fetch_mlit_data("${apiKey}", "${pref}", "rsdb_bridge")
+                    data = await fetch_xroad_data("${apiKey}", "${pref}", "${dataType}")
                     json.dumps(data)
                 `);
 
