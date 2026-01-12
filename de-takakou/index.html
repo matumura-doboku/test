@@ -232,9 +232,9 @@
                 if (dataType === 'ksj') {
                     // 統合解析 (infrastructure_integrator.py)
                     result = await pyodide.runPythonAsync(`
-                        from infrastructure_integrator import main_process
+                        from infrastructure_integrator import run_integrated_analysis
                         import json
-                        data = await main_process("${apiKey}", "${pref}")
+                        data = await run_integrated_analysis("${apiKey}", "${pref}")
                         json.dumps(data)
                     `);
                 } else {
