@@ -180,21 +180,15 @@
                 });
 
                 // main.pyを読み込む
+                // bridge.pyを読み込んでファイルシステムに書き込む (import可能にするため)
+                const bridgeResponse = await fetch('python/bridge.py');
+                const bridgeCode = await bridgeResponse.text();
+                pyodide.FS.writeFile('bridge.py', bridgeCode);
+
+                // main.pyを読み込む
                 const response = await fetch('python/main.py');
                 const code = await response.text();
                 await pyodide.runPythonAsync(code);
-
-                // translator.pyを読み込んで、Pyodideの仮想ファイルシステムに保存する
-                // これにより、後で 'from translator import ...' が可能になる
-                const transResponse = await fetch('python/translator.py');
-                const transCode = await transResponse.text();
-                pyodide.FS.writeFile('/home/pyodide/translator.py', transCode, { encoding: "utf8" });
-                // 念のためパスを通してimportできるか確認（エラーが出なければOK）
-                await pyodide.runPythonAsync(`
-                    import sys
-                    sys.path.append('/home/pyodide')
-                    import translator
-                `);
 
                 appendLog('システムの準備が整いました。', 'success');
                 runBtn.disabled = false;
@@ -254,37 +248,13 @@
         });
 
         // CSV出力ボタンのイベント
-        csvBtn.addEventListener('click', async () => {
+        csvBtn.addEventListener('click', () => {
             if (!currentData || currentData.length === 0) return;
 
-            // 翻訳処理の実行
-            let exportData = currentData;
-            try {
-                // 生データ(currentData)をPythonに渡して翻訳させる
-                pyodide.globals.set('raw_data', currentData);
-                const translated = await pyodide.runPythonAsync(`
-                    import json
-                    import js
-                    from translator import translate_keys_list
-                    
-                    # JSオブジェクトをPython辞書リストに変換して翻訳
-                    # pyodideの変換機能を利用
-                    raw = raw_data.to_py()
-                    translated = translate_keys_list(raw)
-                    
-                    # 再びJSON文字列にして返す（JS側でのハンドリング簡易化）
-                    json.dumps(translated)
-                `);
-                exportData = JSON.parse(translated);
-            } catch (e) {
-                console.error("Translation ERROR:", e);
-                appendLog('翻訳処理に失敗したため、生データを出力します。', 'error');
-            }
-
             // CSVデータの生成
-            const keys = Object.keys(exportData[0]);
+            const keys = Object.keys(currentData[0]);
             const header = keys.join(',');
-            const rows = exportData.map(row => {
+            const rows = currentData.map(row => {
                 return keys.map(key => {
                     const val = row[key] === null ? '' : row[key];
                     // ダブルクォートをエスケープして囲む
@@ -309,30 +279,12 @@
 
         // メインシステムへ送信ボタンのイベント
         const sendBtn = document.getElementById('send-btn');
-        sendBtn.addEventListener('click', async () => {
+        sendBtn.addEventListener('click', () => {
             if (!currentData || currentData.length === 0) return;
 
             try {
-                // 翻訳処理の実行
-                let exportData = currentData;
-                try {
-                    pyodide.globals.set('raw_data', currentData);
-                    const translated = await pyodide.runPythonAsync(`
-                        import json
-                        import js
-                        from translator import translate_keys_list
-                        raw = raw_data.to_py()
-                        translated = translate_keys_list(raw)
-                        json.dumps(translated)
-                    `);
-                    exportData = JSON.parse(translated);
-                } catch (e) {
-                    console.error("Translation ERROR:", e);
-                    appendLog('翻訳処理に失敗しましたが、生データを送信します。', 'error');
-                }
-
                 // localStorageにデータを保存
-                localStorage.setItem('daredemoGIS_imported_data', JSON.stringify(exportData));
+                localStorage.setItem('daredemoGIS_imported_data', JSON.stringify(currentData));
                 localStorage.setItem('daredemoGIS_import_timestamp', new Date().toISOString());
 
                 appendLog('データをメインシステムへ転送しました。移動します...', 'success');

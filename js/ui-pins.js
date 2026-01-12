@@ -1,5 +1,6 @@
 import { state } from './state.js';
 import { registerLabels, parseFilterExpression } from './filter-parser.js';
+import { getFieldLabel, FIELD_LABELS } from './translator.js';
 import {
     vizModeSelect,
     vizSettingsGrid,
@@ -18,19 +19,14 @@ import {
     pinFieldList
 } from './dom.js';
 
-let selectedFields = ['施設名称', '判定区分(数値)']; // デフォルト表示項目
-// 柔軟なカラム特定のためのロジックは削除し、Pythonから送られてきたキーを直接使用する
+let selectedFields = ['title', 'hantei']; // デフォルト表示項目
 
-function getFieldLabel(key) {
-    // サーバーサイド(Python)ですでに翻訳されているため、キーをそのまま返す
-    // 必要であればここで追加の整形を行うことも可能
-    return key;
-}
+
 
 export function initPinVisualization() {
     if (!vizModeSelect) return;
 
-    // registerLabels(FIELD_LABELS); // 削除済みのためコメントアウトまたは空呼び出し
+    registerLabels(FIELD_LABELS);
 
     if (pinLoadBtn) {
         pinLoadBtn.addEventListener('click', loadPinDataFromStorage);
@@ -114,14 +110,8 @@ function handleCsvUpload(e) {
                 console.log("CSV Loaded:", results.data.length, "rows");
 
                 // データを整形 (lat/lonがなければ緯度/経度カラムを探すなどの正規化もここで行うと良い)
-                // window.Translatorを使ってCSVデータのキーを翻訳する
-                let processedData = results.data;
-                if (window.Translator) {
-                    console.log("Translating CSV data...");
-                    processedData = window.Translator.translateDataList(results.data);
-                }
-
-                processPinData(processedData, new Date().toISOString());
+                // 今回はそのまま渡す
+                processPinData(results.data, new Date().toISOString());
 
                 // 成功したらLocalStorageにも保存しておく（オプション）
                 try {
@@ -177,13 +167,26 @@ function updateFieldSelectOptions(sampleData) {
     const currentVal = pinFieldSelect.value;
     pinFieldSelect.innerHTML = '<option value="">項目を選択...</option>';
 
-    // Pythonから送られてきた全てのキーをドロップダウンの候補とする
-    const keys = Object.keys(sampleData);
+    // meta_RSDBで始まるキー または title, id, lat, lon など許可リストにあるもの
+    const ALLOWED_FIELDS = ['title', 'hantei', 'id', 'lat', 'lon'];
+
+    const keys = Object.keys(sampleData).filter(key => {
+        return key.startsWith('meta_RSDB') || ALLOWED_FIELDS.includes(key);
+    });
+
+    // Sort keys: put allowed fields first, then alphabetical or standard order
+    keys.sort((a, b) => {
+        const aIsAllowed = ALLOWED_FIELDS.includes(a);
+        const bIsAllowed = ALLOWED_FIELDS.includes(b);
+        if (aIsAllowed && !bIsAllowed) return -1;
+        if (!aIsAllowed && bIsAllowed) return 1;
+        return a.localeCompare(b);
+    });
 
     keys.forEach(key => {
         const option = document.createElement('option');
         option.value = key;
-        option.textContent = key; // getFieldLabelを通さず、キーそのものを表示（Python側で翻訳済みのため）
+        option.textContent = getFieldLabel(key);
         pinFieldSelect.appendChild(option);
     });
     pinFieldSelect.value = currentVal;
@@ -192,19 +195,15 @@ function updateFieldSelectOptions(sampleData) {
 function addPinLayer(data) {
     if (!state.map || !state.mapReady) return;
 
-    // Python側で「緯度」「経度」というキーに翻訳されていることを前提とする
-    // もしPython側の翻訳が変われば、ここも自動的に影響を受ける（データ駆動）
-    const features = data.filter(d => d['緯度'] && d['経度']).map(d => ({
+    const features = data.filter(d => d.lat && d.lon).map(d => ({
         type: 'Feature',
         geometry: {
             type: 'Point',
-            coordinates: [Number(d['経度']), Number(d['緯度'])]
+            coordinates: [Number(d.lon), Number(d.lat)]
         },
         properties: {
             ...d,
-            // 色分け用の数値データ。Python側で「判定区分(数値)」に変換されている箇所を参照
-            // キーが存在しない場合はデフォルト0
-            hantei: Number(d['判定区分(数値)'] || 0)
+            hantei: Number(d['meta_RSDB:tenken_kiroku_hantei_kubun'] || 0)
         }
     }));
 
@@ -270,8 +269,6 @@ function updatePinFilter() {
 
     // チェックボックスの条件
     if (showOnlyAlert) {
-        // 色分けロジック側でのプロパティ名確認が必要。
-        // 上記addPinLayerで properties.hantei に数値をセットしているので、フィルタは 'hantei' のままで良い
         conditions.push(['in', ['get', 'hantei'], ['literal', [3, 4]]]);
     }
 
