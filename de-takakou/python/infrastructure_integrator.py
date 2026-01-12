@@ -5,110 +5,65 @@ from pyodide.http import pyfetch
 import micropip
 
 # -----------------------------------------------------------------------------
-# 1. 初期化・ライブラリインストール
+# 1. システム初期化 & ライブラリロード
 # -----------------------------------------------------------------------------
-async def setup_environment():
-    print("INIT: 解析ライブラリ(shapely)の準備を確認中...")
+async def initialize_system():
+    print("SYSTEM: GISコア(shapely)を起動中...")
     try:
         await micropip.install("shapely")
-        global LineString, Point
-        from shapely.geometry import LineString, Point
-        print("INIT: Shapelyの準備が完了しました。")
+        global LineString, Point, box
+        from shapely.geometry import LineString, Point, box
+        print("SYSTEM: 準備完了。解析エンジンは正常です。")
         return True
     except Exception as e:
-        print(f"WARNING: Shapelyが利用できません({e})。簡易モードに切り替えます。")
+        print(f"CRITICAL: GISライブラリのロードに失敗: {e}")
         return False
 
 # -----------------------------------------------------------------------------
-# 2. 設定・ターゲット定義
+# 2. ターゲット定義 (ID指定 + キーワード補完)
 # -----------------------------------------------------------------------------
-
+# dataset_id で取れなければ、keyword で再トライする「二段構え」
 TARGETS = [
     {
-        "name": "道路(橋梁)",
-        "mode": "strict",
-        "id": "rsdb_bridge",
-        "tag": "bridge"
+        "tag": "BRIDGE", 
+        "name": "橋梁", 
+        "strict_id": "rsdb_bridge", 
+        "keyword": "橋梁"
     },
     {
-        "name": "下水道管路",
-        "mode": "fuzzy",
-        "keyword": "下水道管路",
-        "tag": "pipe"
+        "tag": "PIPE",   
+        "name": "下水道", 
+        "strict_id": "sewerage_pipe", # 地域によっては nlni_ksj-w09 等の場合あり
+        "keyword": "下水道管路"       # IDで取れない場合の保険
     }
 ]
 
-FIELD_LABELS = {
-    'title': '名称',
-    'meta_RSDB:tenken_kiroku_hantei_kubun': '判定',
-    'meta_RSDB:syogen_fukuin': '幅員',
-    'meta_NLNI:W09_002': '管径',
-    'meta_NLNI:W09_003': '布設年度'
-}
-
 # -----------------------------------------------------------------------------
-# 3. データ整形（防御力強化版）
+# 3. 高耐久データ取得エンジン (Hybrid Fetcher)
 # -----------------------------------------------------------------------------
-
-def safe_float(value, default=0.0):
-    """Noneや不正な文字列を安全に数値変換する"""
-    if value is None:
-        return default
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        return default
-
-def translate_item(item, tag):
-    """データ翻訳と座標の安全な抽出"""
-    new_item = {"_type": tag}
-    for k, v in item.items():
-        label = FIELD_LABELS.get(k, k.split(':')[-1] if ':' in k else k)
-        new_item[label] = v
-    
-    # 座標の安全な抽出（今回のエラー対策）
-    coords = []
-    lat = item.get("lat")
-    lon = item.get("lon")
-    
-    # lat/lonの両方が存在し、かつNoneでない場合のみ数値変換
-    if lat is not None and lon is not None:
-        coords.append({
-            "lat": safe_float(lat), 
-            "lon": safe_float(lon)
-        })
-    
-    new_item["coords"] = coords
-    
-    # 幅員の安全な数値化
-    if tag == "bridge":
-        w_val = item.get("meta_RSDB:syogen_fukuin")
-        new_item["width"] = safe_float(w_val, default=4.0)
-    else:
-        new_item["width"] = 0.0 # 管路は幅員計算不要
-        
-    return new_item
-
-# -----------------------------------------------------------------------------
-# 4. データ取得エンジン
-# -----------------------------------------------------------------------------
-
-async def fetch_data(api_key, pref_name, target):
+async def fetch_data_robust(api_key, pref_name, target):
+    WORKER = "https://mlit-user-proxy.gyorui-sawara.workers.dev"
     limit = 500
     offset = 0
     results = []
-    WORKER_ENDPOINT = "https://mlit-user-proxy.gyorui-sawara.workers.dev"
     
-    print(f"INFO: 【{target['name']}】取得開始...")
+    # 戦略: まずStrict(ID指定)で挑み、ダメならFuzzy(キーワード)に切り替える
+    mode = "Strict"
+    current_query_type = "ID" 
+    
+    print(f"FETCH: 【{target['name']}】データ探索開始...")
 
     try:
         while True:
             # クエリ構築
-            if target['mode'] == 'strict':
-                query_body = f'term: "{pref_name}", phraseMatch: true, attributeFilter: {{ attributeName: "DPF:dataset_id", is: "{target["id"]}" }}'
+            if current_query_type == "ID":
+                # ID指定 (高速・正確)
+                query_body = f'term: "{pref_name}", phraseMatch: true, attributeFilter: {{ attributeName: "DPF:dataset_id", is: "{target["strict_id"]}" }}'
             else:
+                # キーワード検索 (広範囲・保険)
                 query_body = f'term: "{pref_name} {target["keyword"]}", phraseMatch: false'
 
+            # 正しいコマンド (first=offset, size=limit)
             query = f"""
             query {{
               search({query_body}, first: {offset}, size: {limit}) {{
@@ -118,24 +73,28 @@ async def fetch_data(api_key, pref_name, target):
             }}
             """
 
-            headers = {"apikey": api_key, "Content-Type": "application/json"}
-            url = f"{WORKER_ENDPOINT.rstrip('/')}/api/v1/"
-            res = await pyfetch(url, method="POST", headers=headers, body=json.dumps({"query": query}))
+            # リクエスト
+            res = await pyfetch(f"{WORKER.rstrip('/')}/api/v1/", method="POST", 
+                              headers={"apikey": api_key, "Content-Type": "application/json"}, 
+                              body=json.dumps({"query": query}))
             
-            if res.status != 200:
-                print(f"ERROR: API {res.status}")
-                break
-
+            if res.status != 200: break
             data = await res.json()
-            search_res = data.get("data", {}).get("search", {})
-            items = search_res.get("searchResults", [])
-            
-            if not items:
-                if offset == 0: print(f"WARNING: {target['name']}は0件でした。")
-                break
+            items = data.get("data", {}).get("search", {}).get("searchResults", [])
+            total = data.get("data", {}).get("search", {}).get("totalNumber", 0)
 
+            # Strictモードで0件なら、Fuzzyモードへ切り替え
+            if not items and offset == 0 and current_query_type == "ID":
+                print(f"WARN: ID({target['strict_id']})で見つかりません。キーワード({target['keyword']})検索に切り替えます。")
+                current_query_type = "KEYWORD"
+                continue # ループ先頭に戻って再検索
+            
+            if not items: break
+
+            # データ保存
             for item in items:
                 # メタデータ展開
+                flat_meta = {}
                 if "metadata" in item and isinstance(item["metadata"], dict):
                     def flatten(d, p=''):
                         o = {}
@@ -144,88 +103,159 @@ async def fetch_data(api_key, pref_name, target):
                             if isinstance(v, dict): o.update(flatten(v, nk))
                             else: o[nk] = v
                         return o
-                    item.update(flatten(item["metadata"], "meta"))
+                    flat_meta = flatten(item["metadata"], "meta")
                 
-                # 整形（ここでsafe_floatが動く）
-                results.append(translate_item(item, target["tag"]))
+                # 生データ保持
+                item.update(flat_meta)
+                item["_tag"] = target["tag"]
+                results.append(item)
 
             offset += len(items)
-            total = search_res.get("totalNumber", 0)
-            print(f"   -> {len(results)} / {total} 件...")
+            print(f"   -> {len(results)} / {total} 件取得中 ({current_query_type})...")
             
-            if len(results) >= 2000 or len(items) < limit: break
-            await asyncio.sleep(0.5)
+            if len(results) >= 2000: break # テスト用リミット
+            await asyncio.sleep(0.3)
 
+        print(f"FETCH: {target['name']} -> 合計 {len(results)} 件")
         return results
 
     except Exception as e:
-        print(f"ERROR: 取得中に中断 ({e})")
+        print(f"ERROR: 取得中にエラー発生: {e}")
         return []
 
 # -----------------------------------------------------------------------------
-# 5. 空間解析（Shapely活用）
+# 4. 万能座標パース & ジオメトリ生成
 # -----------------------------------------------------------------------------
-
-def analyze_risks(bridges, pipes, use_shapely):
-    print(f"\nINFO: 空間解析(交差判定)を実行中...")
-    matches = []
-    if not bridges or not pipes:
-        print("WARNING: 解析に必要なデータが揃っていません。")
-        return []
-
-    DEG_PER_M = 1 / 111000.0 
+def parse_geometry_safe(item):
+    """どんな形式の座標データも Shapely Geometry に変換する"""
+    coords = []
     
-    if use_shapely:
-        # 1. 橋梁をポリゴン化（幅員バッファ）
-        bridge_polys = []
-        for b in bridges:
-            if not b["coords"]: continue
-            p = b["coords"][0]
-            # 道路幅員(W)の半分 + 遊び0.5m
-            radius = (b.get("width", 4.0) / 2 + 0.5) * DEG_PER_M
-            poly = Point(p["lon"], p["lat"]).buffer(radius)
-            bridge_polys.append({"geo": poly, "data": b})
-
-        # 2. 管路（点）との交差判定
-        for p in pipes:
-            if not p["coords"]: continue
-            pt = Point(p["coords"][0]["lon"], p["coords"][0]["lat"])
+    # 1. 文字列やリストから座標を探す
+    candidates = [
+        item.get("meta_geometry_coordinates"),
+        item.get("meta_coordinates"),
+        item.get("coords")
+    ]
+    
+    found_raw = None
+    for c in candidates:
+        if c: 
+            found_raw = c
+            break
             
-            for b_poly in bridge_polys:
-                if b_poly["geo"].intersects(pt):
-                    matches.append({
-                        "bridge": b_poly["data"].get("名称", "不明"),
-                        "hantei": b_poly["data"].get("判定", "-"),
-                        "pipe_id": p.get("ID", "-"),
-                        "year": p.get("布設年度", "-"),
-                        "risk": "HIGH" if str(b_poly["data"].get("判定")) in ["3", "4"] else "LOW"
-                    })
+    # 文字列ならデコード
+    if isinstance(found_raw, str):
+        try:
+            import ast
+            found_raw = ast.literal_eval(found_raw)
+        except: pass
+
+    # リストなら座標抽出
+    if isinstance(found_raw, list):
+        # [[lon, lat], ...]
+        if len(found_raw) > 0 and isinstance(found_raw[0], list):
+            coords = [(float(p[0]), float(p[1])) for p in found_raw if len(p)>=2]
+        # [lon, lat]
+        elif len(found_raw) >= 2 and isinstance(found_raw[0], (int, float)):
+            coords = [(float(found_raw[0]), float(found_raw[1]))]
+            
+    # 見つからなければ lat/lon
+    if not coords and item.get("lat") and item.get("lon"):
+        coords = [(float(item["lon"]), float(item["lat"]))]
+
+    if not coords: return None
+
+    # LineString か Point か
+    if len(coords) > 1:
+        return LineString(coords)
+    else:
+        return Point(coords[0])
+
+# -----------------------------------------------------------------------------
+# 5. 高速空間解析 (Boxフィルタ + 線形バッファ)
+# -----------------------------------------------------------------------------
+def analyze_risks_final(bridges, pipes):
+    print(f"\nANALYZE: 空間解析を開始 (橋:{len(bridges)} vs 管:{len(pipes)})...")
+    matches = []
     
-    print(f"SUCCESS: {len(matches)} 件の重なりを検出しました。")
+    # 簡易距離係数
+    LAT_PER_M = 1 / 111111.0
+    
+    # 1. 橋梁データの準備（ポリゴン化 + インデックス化）
+    bridge_index = []
+    for b in bridges:
+        geom = parse_geometry_safe(b)
+        if not geom: continue
+        
+        # 幅員取得 (なければ4m)
+        w_val = b.get("meta_RSDB:syogen_fukuin")
+        try: width = float(w_val) if w_val else 4.0
+        except: width = 4.0
+        
+        # バッファ生成 (幅/2 + 余裕1m)
+        buf_size = (width / 2 + 1.0) * LAT_PER_M
+        poly = geom.buffer(buf_size)
+        
+        bridge_index.append({
+            "poly": poly,
+            "bounds": poly.bounds, # 高速化のための「箱」
+            "data": b
+        })
+
+    # 2. 管路データとの総当たり（高速Box判定付き）
+    for p in pipes:
+        p_geom = parse_geometry_safe(p)
+        if not p_geom: continue
+        
+        p_bounds = p_geom.bounds
+        
+        for b_obj in bridge_index:
+            # Step 1: 箱(Bounds)が重なっていなければ即スキップ
+            bb = b_obj["bounds"]
+            if (p_bounds[0] > bb[2] or p_bounds[2] < bb[0] or 
+                p_bounds[1] > bb[3] or p_bounds[3] < bb[1]):
+                continue
+                
+            # Step 2: 箱が重なっていれば、精密判定
+            if b_obj["poly"].intersects(p_geom):
+                # リスク判定 (判定区分3,4は危険)
+                hantei = str(b_obj["data"].get("meta_RSDB:tenken_kiroku_hantei_kubun", "-"))
+                risk_level = "高" if hantei in ["3", "4"] else "低"
+                
+                matches.append({
+                    "bridge": b_obj["data"].get("title", "不明"),
+                    "hantei": hantei,
+                    "pipe_id": p.get("id"),
+                    "pipe_year": p.get("meta_NLNI:W09_003", "-"), # 布設年度
+                    "risk": risk_level
+                })
+
+    print(f"SUCCESS: 解析完了 -> {len(matches)} 件のリスク箇所を特定しました。")
     return matches
 
 # -----------------------------------------------------------------------------
-# 6. メイン実行プロセス
+# 6. メイン実行フロー
 # -----------------------------------------------------------------------------
-async def run_integrated_analysis(api_key, pref_name):
-    # 1. 環境構築
-    use_shapely = await setup_environment()
+async def main_full(api_key, pref_name):
+    # 1. 環境
+    if not await initialize_system(): return
+
+    # 2. 取得 (Hybrid)
+    bridges = await fetch_data_robust(api_key, pref_name, TARGETS[0])
+    pipes = await fetch_data_robust(api_key, pref_name, TARGETS[1])
     
-    # 2. 道路データ取得
-    bridges = await fetch_data(api_key, pref_name, TARGETS[0])
+    if not bridges or not pipes:
+        print("ERROR: 解析に必要なデータが揃いませんでした。")
+        return
+
+    # 3. 解析 (Optimized)
+    risks = analyze_risks_final(bridges, pipes)
     
-    # 3. 下水道データ取得（fuzzyモード）
-    pipes = await fetch_data(api_key, pref_name, TARGETS[1])
-    
-    # 4. 解析
-    results = analyze_risks(bridges, pipes, use_shapely)
-    
-    # 5. 結果表示
-    if results:
-        print("\n--- 【解析結果】リスク箇所一覧 ---")
-        for r in results[:10]:
-            print(f"地点: {r['bridge']} (判定:{r['hantei']}) × 管路: {r['year']}年製 [リスク:{r['risk']}]")
-    else:
-        print("\nINFO: 指定エリア内に交差箇所は見つかりませんでした。")
-            
-    return results
+    # 4. レポート
+    print("\n--- 【重要】優先対応が必要な箇所 ---")
+    high_risks = [r for r in risks if r['risk'] == "高"]
+    for r in high_risks[:10]:
+        print(f"橋梁: {r['bridge']}(判定{r['hantei']}) × 管路: {r['pipe_year']}年製")
+        
+    print(f"\n(全 {len(risks)} 件中、高リスクは {len(high_risks)} 件です)")
+    return risks
