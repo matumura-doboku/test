@@ -22,13 +22,17 @@ FIELD_LABELS = {
     'id': 'ID',
     'lat': '緯度',
     'lon': '経度',
-    'meta_RSDB:tenken_kiroku_hantei_kubun': '判定区分', # これが「1〜4」の数値
+    'meta_RSDB:tenken_kiroku_hantei_kubun': '判定区分', # 1〜4の数値
     'meta_RSDB:syogen_fukuin': '道路幅員', 
     'meta_RSDB:tenken_nendo': '点検年度',
     'meta_RSDB:syogen_kyouchou': '橋長',
     'meta_DPF:address': '所在地住所',
     'meta_DPF:dataset_id': 'データセットID'
 }
+
+# -----------------------------------------------------------------------------
+# 2. ユーティリティ関数
+# -----------------------------------------------------------------------------
 
 def translate_keys(data_list):
     """データのキーを日本語（FIELD_LABELS）に変換する"""
@@ -42,34 +46,57 @@ def translate_keys(data_list):
         translated_list.append(new_item)
     return translated_list
 
+def jgd2011_to_wgs84(x, y, pref_code="34"):
+    """
+    平面直角座標 (x, y) を 緯度経度 (lat, lon) に変換する簡易関数
+    ※座標データのみでlat/lonがない場合の保険として実装
+    """
+    origin = SYSTEM_ORIGINS.get(pref_code, {"lat": 36.0, "lon": 133.5})
+    origin_lat = origin["lat"]
+    origin_lon = origin["lon"]
+
+    # 1度あたりの距離(km)概算
+    lat_per_km = 1 / 111.0
+    lon_per_km = 1 / (111.0 * math.cos(math.radians(origin_lat)))
+
+    # メートル -> キロメートル -> 度
+    lat = origin_lat + (x / 1000.0) * lat_per_km
+    lon = origin_lon + (y / 1000.0) * lon_per_km
+
+    return lat, lon
+
 # -----------------------------------------------------------------------------
-# 2. データ取得メインロジック (エラー対策済み決定版)
+# 3. データ取得メインロジック (仕様書準拠・決定版)
 # -----------------------------------------------------------------------------
 
 async def fetch_xroad_data(api_key, pref_name, data_category="橋梁"):
     """
-    400エラーを回避し、かつ正確に rsdb_bridge (橋梁点検) のみを取得する関数
+    MLIT DPF API仕様書に基づき、正しいパラメータでデータを取得する関数
+    first: 取得開始位置 (Offset)
+    size:  取得件数 (Limit)
     """
-    limit = 500  # 1回あたりの取得件数 (first)
-    offset = 0   # 取得開始位置 (offset)
+    limit = 500       # 1回あたりの取得件数 (size)
+    current_offset = 0 # 現在の開始位置 (first)
     total_data = []
+    
+    # ユーザープロキシのエンドポイント
     WORKER_ENDPOINT = "https://mlit-user-proxy.gyorui-sawara.workers.dev"
 
-    print(f"INFO: {pref_name} のデータを 'rsdb_bridge' 指定で取得開始...")
+    print(f"INFO: {pref_name} のデータを取得開始 (Target: rsdb_bridge)")
 
     try:
         while True:
-            # 【ここが修正の決定打】
-            # 1. attributeFilter は 'dataset_id' だけに使用 (ANDを使わずシンプルに)
-            # 2. 都道府県名は 'term' (キーワード検索) で引っ掛ける
-            # 3. first(件数) と offset(開始位置) を正しく分離
+            # 【仕様書に基づく修正箇所】
+            # first: 開始位置を指定 (0, 500, 1000...)
+            # size:  件数を指定
+            # attributeFilter: dataset_id で rsdb_bridge をピンポイント指定
             query = f"""
             query {{
               search(
                 term: "{pref_name}"
                 phraseMatch: true
-                first: {limit}
-                offset: {offset}
+                first: {current_offset}
+                size: {limit}
                 attributeFilter: {{
                   attributeName: "DPF:dataset_id",
                   is: "rsdb_bridge"
@@ -91,7 +118,7 @@ async def fetch_xroad_data(api_key, pref_name, data_category="橋梁"):
             url = f"{WORKER_ENDPOINT.rstrip('/')}/api/v1/"
             headers = {"apikey": api_key, "Content-Type": "application/json"}
             
-            # リクエスト実行
+            # リクエスト送信
             response = await pyfetch(url, method="POST", headers=headers, body=json.dumps(body_data))
             
             # エラーハンドリング
@@ -104,7 +131,7 @@ async def fetch_xroad_data(api_key, pref_name, data_category="橋梁"):
                     pass
                 break
             
-            # レスポンス解析
+            # レスポンスの解析
             resp_json = await response.json()
             search_res = resp_json.get("data", {}).get("search", {})
             batch_data = search_res.get("searchResults", [])
@@ -126,28 +153,29 @@ async def fetch_xroad_data(api_key, pref_name, data_category="橋梁"):
                                 items.append((new_key, v))
                         return dict(items)
                     
-                    # キー名を 'meta_' で統一
+                    # 統一フォーマット 'meta_' で展開
                     flat_meta = flatten_dict(item["metadata"], parent_key="meta")
                     item.update(flat_meta)
                 total_data.append(item)
             
-            # ページネーション更新
+            # 次の開始位置を更新
             count = len(batch_data)
-            offset += count
+            current_offset += count
             
             total_num = search_res.get("totalNumber", 0)
-            print(f"INFO: {len(total_data)} / {total_num} 件 取得中...")
+            print(f"INFO: {len(total_data)} / {total_num} 件 取得中... (Next Offset: {current_offset})")
             
             # 終了判定
             if len(total_data) >= total_num or count < limit or len(total_data) >= 5000:
+                print("INFO: データ取得完了")
                 break
             
-            # API負荷軽減のための待機
+            # API負荷軽減
             await asyncio.sleep(0.5)
 
-        print(f"SUCCESS: 合計 {len(total_data)} 件のデータを取得しました。")
+        print(f"SUCCESS: 合計 {len(total_data)} 件のデータを準備しました。")
         return translate_keys(total_data)
 
     except Exception as e:
-        print(f"ERROR: 致命的なエラーが発生しました: {str(e)}")
+        print(f"ERROR: 処理中にエラーが発生しました: {str(e)}")
         return []
