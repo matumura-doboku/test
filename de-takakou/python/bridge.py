@@ -78,17 +78,17 @@ async def fetch_mlit_data(api_key, pref_name, dataset_id="rsdb_bridge"):
     print(f"INFO: {dataset_id} の取得を開始 (都道府県: {pref_name})")
     
     while True:
-        # 仕様書に基づき、attributeFilterで都道府県とデータセットIDをAND検索
+        # 仕様書に基づき、datasetIdを指定して検索
+        # ※以前動作していたパラメータ構成 (first=offset, size=limit) に戻しています
         query = f"""
         query {{
           search(
-            first: {limit}
-            offset: {offset}
+            datasetId: "{dataset_id}"
+            first: {offset}
+            size: {limit}
             attributeFilter: {{
-              and: [
-                {{ attributeName: "DPF:prefecture_name", is: "{pref_name}" }},
-                {{ attributeName: "DPF:dataset_id", is: "{dataset_id}" }}
-              ]
+              attributeName: "DPF:prefecture_name",
+              is: "{pref_name}"
             }}
           ) {{
             totalNumber
