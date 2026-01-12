@@ -179,6 +179,9 @@
                     stderr: (text) => appendLog(text, 'error')
                 });
 
+                // micropipのロード (これを追加)
+                await pyodide.loadPackage("micropip");
+
                 // main.pyを読み込む
                 // bridge.pyを読み込んでファイルシステムに書き込む (import可能にするため)
                 const bridgeResponse = await fetch('python/bridge.py');
