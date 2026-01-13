@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Graph Tool</title>
+
+    <!-- Google Fonts (Zen Kaku Gothic New to match intai) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;600;700&display=swap"
+        rel="stylesheet">
+
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- Libraries -->
+    <script src="js/lib/plotly.min.js"></script>
+    <script src="js/lib/papaparse.min.js"></script>
+    <script src="js/lib/interact.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+</head>
+
+<body>
+
+    <div class="app">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <header class="brand">
+                <div class="brand-mark"></div>
+                <div style="flex: 1;">
+                    <div class="brand-title">Graph Tool</div>
+                    <div class="brand-sub">データ可視化・分析</div>
+                </div>
+                <div class="dropdown" id="nav-dropdown">
+                    <button class="btn ghost dropdown-toggle" style="padding: 6px 10px; font-size: 12px; width: auto;">
+                        <span>メニュー</span>
+                        <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg"
+                            style="margin-left: 4px;">
+                            <path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                stroke-linejoin="round" />
+                        </svg>
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a href="../index.html">可視化</a></li>
+                        <li><a href="index.html">グラフ作成</a></li>
+                        <li><a href="#" class="disabled">データ加工（準備中）</a></li>
+                    </ul>
+                </div>
+            </header>
+
+            <nav class="tabs" role="tablist">
+                <button class="tab active" data-tab="data" role="tab">データ</button>
+                <button class="tab" data-tab="settings" role="tab">グラフ設定</button>
+            </nav>
+
+            <!-- Data Panel -->
+            <section class="panel active" id="panel-data">
+                <div class="section">
+                    <h2>ファイル入力</h2>
+                    <div class="file-upload-wrapper" id="drop-area">
+                        <input type="file" id="csv-file" accept=".csv" multiple />
+                        <label for="csv-file" class="file-upload-label">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                            <span>CSVを読み込む</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="section hidden" id="file-status-section">
+                    <h2>読み込み状況</h2>
+                    <div class="status-card">
+                        <span class="label">ファイル名</span>
+                        <span id="filename" title="">-</span>
+                    </div>
+                    <div class="status-card">
+                        <span class="label">行数</span>
+                        <span id="row-count">-</span>
+                    </div>
+                    <div class="row gap" style="margin-top: 12px;">
+                        <button class="btn ghost" id="remove-file">解除</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>プリセットデータ</h2>
+                    <div class="row gap section-row">
+                        <button class="btn ghost preset-btn" data-url="data/2020_人口_上位 (1).csv">
+                            人口上位
+                        </button>
+                        <button class="btn ghost preset-btn" data-url="data/2020_人口_集計結果.csv">
+                            集計結果
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Settings Panel -->
+            <section class="panel" id="panel-settings">
+                <div class="section">
+                    <h2>グラフタイプ</h2>
+                    <div class="chart-type-grid">
+                        <label class="chart-option">
+                            <input type="radio" name="chart-type" value="scatter">
+                            <div class="chart-card">
+                                <i class="fa-solid fa-braille"></i>
+                                <span>散布図</span>
+                            </div>
+                        </label>
+                        <label class="chart-option">
+                            <input type="radio" name="chart-type" value="line" checked>
+                            <div class="chart-card">
+                                <i class="fa-solid fa-chart-line"></i>
+                                <span>折れ線</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+
+
+                <div class="section">
+                    <div class="row gap space-between" style="margin-bottom: 12px;">
+                        <h2 style="margin:0;">データ系列</h2>
+                        <button class="btn sm ghost" id="add-series-btn"><i class="fa-solid fa-plus"></i> 追加</button>
+                    </div>
+                    <div id="series-container">
+                        <!-- Series items inserted by JS -->
+                    </div>
+                </div>
+
+                <div class="section hidden" id="scatter-options">
+                    <h2>散布図オプション</h2>
+                    <label class="field">
+                        <span>色分け (Color)</span>
+                        <select id="color-axis">
+                            <option value="">なし</option>
+                        </select>
+                    </label>
+                    <label class="field">
+                        <span>サイズ (Size)</span>
+                        <select id="size-axis">
+                            <option value="">なし</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div class="section">
+                    <h2>強調ツール</h2>
+                    <div class="field" style="margin-bottom: 12px;">
+                        <span style="font-size: 11px;">分析対象の系列</span>
+                        <select id="analysis-target-series">
+                            <option value="0">系列 1</option>
+                        </select>
+                    </div>
+                    <div class="field" style="margin-bottom: 12px;">
+                        <span style="font-size: 11px;">図形の色</span>
+                        <input type="color" id="shape-color" value="#ef4444" style="height: 30px; padding: 2px;">
+                    </div>
+                    <div class="row gap">
+                        <button id="add-rect-btn" class="btn ghost sm" style="flex:1;">
+                            <i class="fa-regular fa-square"></i> 長方形
+                        </button>
+                        <button id="add-circle-btn" class="btn ghost sm" style="flex:1;">
+                            <i class="fa-regular fa-circle"></i> 楕円
+                        </button>
+                    </div>
+                    <div class="row gap" style="margin-top: 8px;">
+                        <button id="add-trendline-btn" class="btn ghost sm" style="flex:1;">
+                            <i class="fa-solid fa-chart-line"></i> 近似線
+                        </button>
+                        <button id="add-average-btn" class="btn ghost sm" style="flex:1;">
+                            <i class="fa-solid fa-minus"></i> 平均線
+                        </button>
+                    </div>
+
+                    <div id="prediction-wrapper" class="hidden"
+                        style="margin-top: 12px; padding: 10px; background: rgba(37, 99, 235, 0.05); border-radius: 6px; border: 1px solid rgba(37, 99, 235, 0.1);">
+                        <h3 style="font-size: 11px; margin: 0 0 8px 0; color: var(--primary);">将来予測 (近似線より算出)</h3>
+                        <div class="field" style="margin-bottom: 8px;">
+                            <span style="font-size: 11px;">X軸の値を入力</span>
+                            <input type="text" id="predict-x-input" placeholder="数値を入力">
+                        </div>
+                        <button id="predict-btn" class="btn primary sm">予測値を表示</button>
+                    </div>
+
+                    <button id="clear-shapes-btn" class="btn ghost sm" style="margin-top: 12px; color: var(--danger);">
+                        <i class="fa-solid fa-trash-can"></i> 図形をすべて削除
+                    </button>
+                </div>
+
+                <div class="section">
+                    <h2>アクション</h2>
+                    <button id="draw-btn" class="btn primary">グラフを描画</button>
+                </div>
+
+                <div class="section">
+                    <h2>出力</h2>
+                    <button id="download-pptx" class="btn ghost"><i class="fa-solid fa-file-powerpoint"></i>
+                        PPTXとして保存</button>
+                </div>
+            </section>
+
+        </aside>
+
+        <!-- Main Content (Canvas Area) -->
+        <main class="main-content">
+            <div id="canvas-area" class="canvas-area">
+                <!-- Template for Graphs (will be cloned) -->
+                <div id="graph-template" class="graph-wrapper hidden">
+                    <div class="graph-header-handle">
+                        <i class="fa-solid fa-grip-lines"></i>
+                        <span class="graph-title">Graph</span>
+                        <button class="graph-close-btn"><i class="fa-solid fa-times"></i></button>
+                    </div>
+                    <div class="plot-content"></div>
+                </div>
+
+                <div class="empty-state" id="empty-state">
+                    <p>データを読み込んで設定を行い、「グラフを描画」をクリックしてください</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+
+</html>
